@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BirdTag - Media Storage System</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --light-bg: #ecf0f1;
+            --dark-bg: #34495e;
+        }
+
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --primary-color: #ecf0f1;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --light-bg: #2c3e50;
+            --dark-bg: #1a252f;
+            --text-color: #ecf0f1;
+            --card-bg: #34495e;
+        }
+
+        body {
+            background-color: var(--light-bg);
+            color: var(--primary-color);
+            transition: all 0.3s ease;
+        }
+
+        [data-theme="dark"] body {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+        }
+
+        /* Navigation */
+        .navbar {
+            background-color: var(--primary-color) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        }
+
+        [data-theme="dark"] .navbar {
+            background-color: var(--card-bg) !important;
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+
+        .navbar-brand i {
+            color: var(--secondary-color);
+        }
+
+        /* Cards */
+        .card {
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,.1);
+            transition: transform 0.2s;
+            background-color: white;
+        }
+
+        [data-theme="dark"] .card {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,.15);
+        }
+
+        /* Drop Zone */
+        #dropZone {
+            border: 3px dashed var(--secondary-color);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: rgba(52, 152, 219, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        #dropZone:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-color: var(--primary-color);
+        }
+
+        #dropZone.dragover {
+            background-color: rgba(52, 152, 219, 0.2);
+            border-color: var(--success-color);
+            transform: scale(1.02);
+        }
+
+        #dropZone i {
+            font-size: 3rem;
+            color: var(--secondary-color);
+            margin-bottom: 1rem;
+        }
+
+        /* Thumbnails */
+        .thumbnail-container {
+            position: relative;
+            display: inline-block;
+            margin: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .thumbnail-container:hover {
+            transform: scale(1.05);
+        }
+
+        .thumbnail {
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        }
+
+        .thumbnail-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+            color: white;
+            padding: 10px;
+            border-radius: 0 0 10px 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .thumbnail-container:hover .thumbnail-overlay {
+            opacity: 1;
+        }
+
+        /* File Tags */
+        .tag-chip {
+            display: inline-block;
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin: 2px;
+            transition: all 0.2s;
+        }
+
+        .tag-chip:hover {
+            background-color: var(--primary-color);
+            transform: scale(1.05);
+        }
+
+        /* Progress Bar */
+        .upload-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background-color: rgba(0,0,0,0.1);
+            z-index: 9999;
+            display: none;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            background-color: var(--success-color);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        /* Notifications */
+        .notification-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            min-width: 300px;
+            z-index: 9999;
+        }
+
+        /* File List */
+        .file-item {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+
+        .file-item:hover {
+            background-color: rgba(52, 152, 219, 0.05);
+            border-color: var(--secondary-color);
+        }
+
+        /* Search Tags */
+        .search-tag {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            display: inline-flex;
+            align-items: center;
+            margin: 5px;
+        }
+
+        .search-tag button {
+            background: none;
+            border: none;
+            color: white;
+            margin-left: 8px;
+            cursor: pointer;
+        }
+
+        /* Loading Spinner */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .thumbnail {
+                width: 150px;
+                height: 150px;
+            }
+            
+            #dropZone {
+                padding: 20px;
+            }
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        /* Modal Customization */
+        [data-theme="dark"] .modal-content {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        /* Form Controls in Dark Mode */
+        [data-theme="dark"] .form-control,
+        [data-theme="dark"] .form-select {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            border-color: #495057;
+        }
+
+        [data-theme="dark"] .form-control:focus,
+        [data-theme="dark"] .form-select:focus {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            border-color: var(--secondary-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- Upload Progress Bar -->
+    <div class="upload-progress">
+        <div class="upload-progress-bar"></div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay">
+        <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-camera-fill"></i> BirdTag
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" onclick="showPage('dashboard')">
+                            <i class="bi bi-house-door"></i> Home/Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showPage('upload')">
+                            <i class="bi bi-cloud-upload"></i> Upload
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showPage('search')">
+                            <i class="bi bi-search"></i> Search
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showPage('myfiles')">
+                            <i class="bi bi-folder"></i> My Files/Tags
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showPage('notifications')">
+                            <i class="bi bi-bell"></i> Notifications
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> <span id="userEmail">Profile</span>
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="#" onclick="showProfile()">
+                                <i class="bi bi-person"></i> My Profile
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="signOut()">
+                                <i class="bi bi-box-arrow-right"></i> Logout
+                            </a></li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container-fluid mt-4">
+        <!-- Dashboard Page -->
+        <div id="dashboardPage" class="page">
+            <div class="row">
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-images" style="font-size: 2rem; color: var(--secondary-color);"></i>
+                            <h3 class="mt-3" id="totalFiles">0</h3>
+                            <p class="text-muted">Total Files</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-tags" style="font-size: 2rem; color: var(--success-color);"></i>
+                            <h3 class="mt-3" id="totalTags">0</h3>
+                            <p class="text-muted">Unique Tags</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-clock-history" style="font-size: 2rem; color: var(--warning-color);"></i>
+                            <h3 class="mt-3" id="recentUploads">0</h3>
+                            <p class="text-muted">Recent Uploads</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-bell" style="font-size: 2rem; color: var(--danger-color);"></i>
+                            <h3 class="mt-3" id="activeNotifications">0</h3>
+                            <p class="text-muted">Active Notifications</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Recent Activity</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="recentActivity" class="list-group">
+                                <p class="text-muted">No recent activity</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Page -->
+        <div id="uploadPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-cloud-upload"></i> Upload Media Files</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="dropZone">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <p class="mt-3 mb-1">Drag and drop files here or click to browse</p>
+                                <small class="text-muted">Supported formats: JPG, PNG, MP4, MP3, WAV</small>
+                                <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" style="display: none;">
+                            </div>
+                            
+                            <div id="uploadQueue" class="mt-4" style="display: none;">
+                                <h6>Upload Queue</h6>
+                                <div id="uploadList"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Page -->
+        <div id="searchPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-search"></i> Search Options</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Tag-Based Search -->
+                            <div class="mb-4">
+                                <h6>Search by Tags</h6>
+                                <div class="input-group mb-2">
+                                    <select class="form-select" id="speciesSelect">
+                                        <option value="">Select species...</option>
+                                        <option value="crow">Crow</option>
+                                        <option value="pigeon">Pigeon</option>
+                                        <option value="sparrow">Sparrow</option>
+                                        <option value="eagle">Eagle</option>
+                                        <option value="parrot">Parrot</option>
+                                        <option value="owl">Owl</option>
+                                        <option value="peacock">Peacock</option>
+                                        <option value="kingfisher">Kingfisher</option>
+                                        <option value="myna">Myna</option>
+                                    </select>
+                                    <input type="number" class="form-control" id="countInput" placeholder="Min count" min="1" value="1">
+                                    <button class="btn btn-outline-secondary" onclick="addSearchTag()">
+                                        <i class="bi bi-plus"></i>
+                                    </button>
+                                </div>
+                                <div id="searchTags"></div>
+                                <button class="btn btn-primary w-100 mt-2" onclick="searchByTags()">
+                                    <i class="bi bi-search"></i> Search
+                                </button>
+                            </div>
+
+                            <hr>
+
+                            <!-- Thumbnail URL Search -->
+                            <div class="mb-4">
+                                <h6>Find Original from Thumbnail</h6>
+                                <input type="text" class="form-control mb-2" id="thumbnailUrl" placeholder="Paste thumbnail URL">
+                                <button class="btn btn-secondary w-100" onclick="resolveToOriginal()">
+                                    <i class="bi bi-image"></i> Get Original
+                                </button>
+                            </div>
+
+                            <hr>
+
+                            <!-- Search by File -->
+                            <div>
+                                <h6>Search by File</h6>
+                                <input type="file" class="form-control mb-2" id="searchFileInput" accept="image/*,video/*,audio/*">
+                                <button class="btn btn-secondary w-100" onclick="searchByFile()">
+                                    <i class="bi bi-file-earmark-search"></i> Find Similar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Search Results</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="searchResults" class="d-flex flex-wrap justify-content-center">
+                                <p class="text-muted w-100 text-center">No search performed yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- My Files Page -->
+        <div id="myfilesPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-folder"></i> My Files</h5>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="refreshMyFiles()">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteSelectedFiles()">
+                                    <i class="bi bi-trash"></i> Delete Selected
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="myFilesList">
+                                <p class="text-muted text-center">Loading your files...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notifications Page -->
+        <div id="notificationsPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-bell"></i> Notification Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>Subscribe to email notifications when new files with specific bird species are uploaded.</p>
+                            
+                            <form id="subscriptionForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" id="notificationEmail" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Select Bird Species</label>
+                                    <select class="form-select" id="notificationSpecies" required>
+                                        <option value="">Choose species...</option>
+                                        <option value="crow">Crow</option>
+                                        <option value="pigeon">Pigeon</option>
+                                        <option value="sparrow">Sparrow</option>
+                                        <option value="eagle">Eagle</option>
+                                        <option value="parrot">Parrot</option>
+                                        <option value="owl">Owl</option>
+                                        <option value="peacock">Peacock</option>
+                                        <option value="kingfisher">Kingfisher</option>
+                                        <option value="myna">Myna</option>
+                                    </select>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-bell-fill"></i> Subscribe
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Active Subscriptions</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="subscriptionsList">
+                                <p class="text-muted">No active subscriptions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Welcome to BirdTag</h5>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs" id="authTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#login" type="button">Login</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="signup-tab" data-bs-toggle="tab" data-bs-target="#signup" type="button">Sign Up</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <!-- Login Tab -->
+                        <div class="tab-pane fade show active" id="login" role="tabpanel">
+                            <form id="loginForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="loginEmail" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="loginPassword" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">Login</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Sign Up Tab -->
+                        <div class="tab-pane fade" id="signup" role="tabpanel">
+                            <form id="signupForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="signupEmail" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">First Name</label>
+                                    <input type="text" class="form-control" id="signupFirstName" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Last Name</label>
+                                    <input type="text" class="form-control" id="signupLastName" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="signupPassword" required>
+                                    <small class="text-muted">Min 8 characters, uppercase, lowercase, and numbers</small>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">Sign Up</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div class="modal fade" id="imageModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Image Preview</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="fullImage" class="img-fluid" src="">
+                    <div id="imageMetadata" class="mt-3 text-start"></div>
+                </div>
+                <div class="modal-footer">
+                    <a id="downloadLink" href="#" class="btn btn-primary" download>
+                        <i class="bi bi-download"></i> Download
+                    </a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Management Modal -->
+    <div class="modal fade" id="tagModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Manage Tags</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="currentTags" class="mb-3"></div>
+                    <hr>
+                    <h6>Add/Remove Tags</h6>
+                    <div class="input-group mb-2">
+                        <select class="form-select" id="tagSpecies">
+                            <option value="">Select species...</option>
+                            <option value="crow">Crow</option>
+                            <option value="pigeon">Pigeon</option>
+                            <option value="sparrow">Sparrow</option>
+                            <option value="eagle">Eagle</option>
+                            <option value="parrot">Parrot</option>
+                        </select>
+                        <input type="number" class="form-control" id="tagCount" placeholder="Count" min="1" value="1">
+                    </div>
+                    <div class="btn-group w-100">
+                        <button class="btn btn-success" onclick="modifyTags(1)">
+                            <i class="bi bi-plus"></i> Add Tag
+                        </button>
+                        <button class="btn btn-danger" onclick="modifyTags(0)">
+                            <i class="bi bi-dash"></i> Remove Tag
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="notification-toast"></div>
+
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" onclick="toggleTheme()">
+        <i class="bi bi-moon-fill" id="themeIcon"></i>
+    </button>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
+    
+    <script>
+        // Configuration
+        const config = {
+            region: 'us-east-1',
+            userPoolId: 'YOUR_USER_POOL_ID',
+            clientId: 'YOUR_CLIENT_ID',
+            apiGatewayUrl: 'YOUR_API_GATEWAY_URL'
+        };
+
+        // Global variables
+        let currentUser = null;
+        let selectedFiles = new Set();
+        let currentFileUrl = null;
+
+        // Initialize on page load
+        window.onload = function() {
+            checkAuth();
+            setupDropZone();
+            setupEventListeners();
+            loadTheme();
+        };
+
+        // Theme Management
+        function loadTheme() {
+            const theme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+            updateTheme}
