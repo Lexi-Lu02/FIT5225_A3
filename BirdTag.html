@@ -318,53 +318,48 @@
             <a class="navbar-brand" href="#">
                 <i class="bi bi-camera-fill"></i> BirdTag
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="#" onclick="showPage('dashboard')">
-                            <i class="bi bi-house-door"></i> Home/Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showPage('upload')">
-                            <i class="bi bi-cloud-upload"></i> Upload
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showPage('search')">
-                            <i class="bi bi-search"></i> Search
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showPage('myfiles')">
-                            <i class="bi bi-folder"></i> My Files/Tags
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="#" onclick="showPage('notifications')">
-                            <i class="bi bi-bell"></i> Notifications
-                        </a>
-                    </li>
-                </ul>
-                <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="profileDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> <span id="userEmail">Profile</span>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#" onclick="showProfile()">
-                                <i class="bi bi-person"></i> My Profile
-                            </a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#" onclick="signOut()">
+            <div class="d-flex align-items-center">
+                <a class="nav-link text-light me-3" href="#" onclick="showPage('dashboard')">
+                    <i class="bi bi-house-door"></i> Home
+                </a>
+                <div class="dropdown">
+                    <button class="btn btn-link nav-link dropdown-toggle text-light" type="button" id="moreOptionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="moreOptionsDropdown">
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('upload')">
+                                <i class="bi bi-cloud-upload"></i> Upload
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('search')">
+                                <i class="bi bi-search"></i> Search
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('myfiles')">
+                                <i class="bi bi-folder"></i> My Files/Tags
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('notifications')">
+                                <i class="bi bi-bell"></i> Notifications
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showProfile()">
+                                <i class="bi bi-person"></i> Profile (<span id="userEmail">Profile</span>)
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="signOut()">
                                 <i class="bi bi-box-arrow-right"></i> Logout
-                            </a></li>
-                        </ul>
-                    </li>
-                </ul>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </nav>
@@ -771,4 +766,24 @@
         function loadTheme() {
             const theme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', theme);
-            updateTheme}
+            updateTheme();
+        }
+
+        function updateTheme() {
+            // Implement theme update logic here
+        }
+
+        function checkAuth() {
+            // Implement authentication check logic here
+        }
+
+        function setupDropZone() {
+            // Implement drop zone setup logic here
+        }
+
+        function setupEventListeners() {
+            // Implement event listeners setup logic here
+        }
+    </script>
+</body>
+</html>
