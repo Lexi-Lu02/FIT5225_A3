@@ -1508,7 +1508,7 @@
             const filesList = document.getElementById('myFilesList');
             
             try {
-                // Search for all files (you might need a different endpoint for user's files)
+                // Search for all files
                 const response = await fetch(`${config.apiGatewayUrl}/v1/search`, {
                     method: 'POST',
                     headers: {
