@@ -95,17 +95,19 @@ Resources:
             MaxAge: 3000
 
   # DynamoDB Table
-  BirdTagMetadataTable:
-    Type: AWS::DynamoDB::Table
+    DBWriteLambda:
+    Type: AWS::Serverless::Function
     Properties:
-      TableName: !Sub BirdTagMetadata-${StudentName}
-      AttributeDefinitions:
-        - AttributeName: fileKey
-          AttributeType: S
-      KeySchema:
-        - AttributeName: fileKey
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      FunctionName: WriteToDynamo
+      Handler: DB.lambda_handler
+      Runtime: python3.9
+      CodeUri: ./
+      Environment:
+        Variables:
+          DDB_TABLE_NAME: BirdTagMetadataDev
+          S3_UPLOAD_BUCKET: birdtag-uploads-dev
+          S3_THUMBNAIL_BUCKET: birdtag-thumbs-dev
+
 
   # Lambda Functions
   UploadFunction:
