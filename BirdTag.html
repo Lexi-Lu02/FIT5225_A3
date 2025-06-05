@@ -458,69 +458,169 @@
         <div id="searchPage" class="page" style="display: none;">
             <div class="row">
                 <div class="col-md-4">
-                    <div class="card">
+                    <div class="card mb-3">
                         <div class="card-header">
                             <h5 class="mb-0"><i class="bi bi-search"></i> Search Options</h5>
                         </div>
                         <div class="card-body">
-                            <!-- Tag-Based Search -->
-                            <div class="mb-4">
-                                <h6>Search by Tags</h6>
-                                <div class="input-group mb-2">
-                                    <select class="form-select" id="speciesSelect">
-                                        <option value="">Select species...</option>
-                                        <option value="crow">Crow</option>
-                                        <option value="pigeon">Pigeon</option>
-                                        <option value="sparrow">Sparrow</option>
-                                        <option value="eagle">Eagle</option>
-                                        <option value="parrot">Parrot</option>
-                                        <option value="owl">Owl</option>
-                                        <option value="peacock">Peacock</option>
-                                        <option value="kingfisher">Kingfisher</option>
-                                        <option value="myna">Myna</option>
-                                    </select>
-                                    <input type="number" class="form-control" id="countInput" placeholder="Min count" min="1" value="1">
-                                    <button class="btn btn-outline-secondary" onclick="addSearchTag()">
-                                        <i class="bi bi-plus"></i>
+                            <!-- Tab Navigation for Different Search Types -->
+                            <ul class="nav nav-tabs mb-3" id="searchTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tagsSearch" type="button">
+                                        <i class="bi bi-tags"></i> Tags
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="species-tab" data-bs-toggle="tab" data-bs-target="#speciesSearch" type="button">
+                                        <i class="bi bi-search"></i> Species
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="thumbnail-tab" data-bs-toggle="tab" data-bs-target="#thumbnailSearch" type="button">
+                                        <i class="bi bi-image"></i> Thumbnail
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="file-tab" data-bs-toggle="tab" data-bs-target="#fileSearch" type="button">
+                                        <i class="bi bi-file-earmark"></i> File
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content">
+                                <!-- Tag-Based Search with Counts -->
+                                <div class="tab-pane fade show active" id="tagsSearch" role="tabpanel">
+                                    <h6>Search by Tags with Minimum Counts</h6>
+                                    <small class="text-muted mb-2">Find files with specific bird counts (AND operation)</small>
+                                    <div class="input-group mb-2 mt-2">
+                                        <select class="form-select" id="speciesSelect">
+                                            <option value="">Select species...</option>
+                                            <option value="crow">Crow</option>
+                                            <option value="pigeon">Pigeon</option>
+                                            <option value="sparrow">Sparrow</option>
+                                            <option value="eagle">Eagle</option>
+                                            <option value="parrot">Parrot</option>
+                                            <option value="owl">Owl</option>
+                                            <option value="peacock">Peacock</option>
+                                            <option value="kingfisher">Kingfisher</option>
+                                            <option value="myna">Myna</option>
+                                        </select>
+                                        <input type="number" class="form-control" id="countInput" placeholder="Min count" min="1" value="1">
+                                        <button class="btn btn-outline-secondary" onclick="addSearchTag()">
+                                            <i class="bi bi-plus"></i> Add
+                                        </button>
+                                    </div>
+                                    <div id="searchTags" class="mb-2"></div>
+                                    <button class="btn btn-primary w-100" onclick="searchByTags()">
+                                        <i class="bi bi-search"></i> Search with Counts
                                     </button>
                                 </div>
-                                <div id="searchTags"></div>
-                                <button class="btn btn-primary w-100 mt-2" onclick="searchByTags()">
-                                    <i class="bi bi-search"></i> Search
+
+                                <!-- Species-Only Search -->
+                                <div class="tab-pane fade" id="speciesSearch" role="tabpanel">
+                                    <h6>Search by Species Only</h6>
+                                    <small class="text-muted mb-2">Find all files containing at least one of selected species</small>
+                                    <div class="mb-3 mt-2">
+                                        <select class="form-select" id="speciesOnlySelect">
+                                            <option value="">Select species...</option>
+                                            <option value="crow">Crow</option>
+                                            <option value="pigeon">Pigeon</option>
+                                            <option value="sparrow">Sparrow</option>
+                                            <option value="eagle">Eagle</option>
+                                            <option value="parrot">Parrot</option>
+                                            <option value="owl">Owl</option>
+                                            <option value="peacock">Peacock</option>
+                                            <option value="kingfisher">Kingfisher</option>
+                                            <option value="myna">Myna</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="searchBySpeciesOnly()">
+                                        <i class="bi bi-search"></i> Find All Files
+                                    </button>
+                                </div>
+
+                                <!-- Thumbnail URL Search -->
+                                <div class="tab-pane fade" id="thumbnailSearch" role="tabpanel">
+                                    <h6>Find Original from Thumbnail</h6>
+                                    <small class="text-muted mb-2">Get full-size image from thumbnail URL</small>
+                                    <div class="mb-3 mt-2">
+                                        <input type="text" class="form-control" id="thumbnailUrl" 
+                                               placeholder="Paste thumbnail S3 URL here">
+                                        <small class="text-muted">Example: https://bucket.s3.amazonaws.com/thumbnails/...</small>
+                                    </div>
+                                    <button class="btn btn-secondary w-100" onclick="resolveToOriginal()">
+                                        <i class="bi bi-arrows-fullscreen"></i> Get Full Size Image
+                                    </button>
+                                </div>
+
+                                <!-- Search by File -->
+                                <div class="tab-pane fade" id="fileSearch" role="tabpanel">
+                                    <h6>Search by File Content</h6>
+                                    <small class="text-muted mb-2">Upload a file to find similar tagged files</small>
+                                    <div class="mb-3 mt-2">
+                                        <input type="file" class="form-control" id="searchFileInput" 
+                                               accept="image/*,video/*,audio/*">
+                                        <small class="text-muted">File will be analyzed but not stored</small>
+                                    </div>
+                                    <button class="btn btn-secondary w-100" onclick="searchByFile()">
+                                        <i class="bi bi-file-earmark-search"></i> Find Similar Files
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tag Management for Bulk Operations -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-tags-fill"></i> Bulk Tag Management</h5>
+                        </div>
+                        <div class="card-body">
+                            <small class="text-muted">Select files from results to manage tags</small>
+                            <div id="selectedFilesInfo" class="mt-2 mb-2">
+                                <span class="badge bg-secondary">0 files selected</span>
+                            </div>
+                            <div class="input-group mb-2">
+                                <select class="form-select" id="bulkTagSpecies">
+                                    <option value="">Select species...</option>
+                                    <option value="crow">Crow</option>
+                                    <option value="pigeon">Pigeon</option>
+                                    <option value="sparrow">Sparrow</option>
+                                    <option value="eagle">Eagle</option>
+                                    <option value="parrot">Parrot</option>
+                                </select>
+                                <input type="number" class="form-control" id="bulkTagCount" placeholder="Count" min="1" value="1">
+                            </div>
+                            <div class="btn-group w-100">
+                                <button class="btn btn-success" onclick="bulkAddTags()">
+                                    <i class="bi bi-plus-circle"></i> Add Tags
+                                </button>
+                                <button class="btn btn-danger" onclick="bulkRemoveTags()">
+                                    <i class="bi bi-dash-circle"></i> Remove Tags
                                 </button>
                             </div>
-
-                            <hr>
-
-                            <!-- Thumbnail URL Search -->
-                            <div class="mb-4">
-                                <h6>Find Original from Thumbnail</h6>
-                                <input type="text" class="form-control mb-2" id="thumbnailUrl" placeholder="Paste thumbnail URL">
-                                <button class="btn btn-secondary w-100" onclick="resolveToOriginal()">
-                                    <i class="bi bi-image"></i> Get Original
-                                </button>
-                            </div>
-
-                            <hr>
-
-                            <!-- Search by File -->
-                            <div>
-                                <h6>Search by File</h6>
-                                <input type="file" class="form-control mb-2" id="searchFileInput" accept="image/*,video/*,audio/*">
-                                <button class="btn btn-secondary w-100" onclick="searchByFile()">
-                                    <i class="bi bi-file-earmark-search"></i> Find Similar
-                                </button>
-                            </div>
+                            <button class="btn btn-outline-danger w-100 mt-2" onclick="bulkDeleteFiles()">
+                                <i class="bi bi-trash"></i> Delete Selected Files
+                            </button>
                         </div>
                     </div>
                 </div>
 
                 <div class="col-md-8">
                     <div class="card">
-                        <div class="card-header">
+                        <div class="card-header d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">Search Results</h5>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="selectAllResults()">
+                                    <i class="bi bi-check2-square"></i> Select All
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="deselectAllResults()">
+                                    <i class="bi bi-square"></i> Deselect All
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
+                            <div id="searchResultsInfo" class="mb-2"></div>
                             <div id="searchResults" class="d-flex flex-wrap justify-content-center">
                                 <p class="text-muted w-100 text-center">No search performed yet</p>
                             </div>
@@ -722,10 +822,10 @@
                     </div>
                     <div class="btn-group w-100">
                         <button class="btn btn-success" onclick="modifyTags(1)">
-                            <i class="bi bi-plus"></i> Add Tag
+                            <i class="bi bi-plus-circle"></i> Add Tag
                         </button>
                         <button class="btn btn-danger" onclick="modifyTags(0)">
-                            <i class="bi bi-dash"></i> Remove Tag
+                            <i class="bi bi-dash-circle"></i> Remove Tag
                         </button>
                     </div>
                 </div>
@@ -771,4 +871,922 @@
         function loadTheme() {
             const theme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', theme);
-            updateTheme}
+            updateThemeIcon();
+        }
+
+        function updateThemeIcon() {
+            const theme = document.documentElement.getAttribute('data-theme');
+            const icon = document.getElementById('themeIcon');
+            icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeIcon();
+        }
+
+        // Authentication
+        function checkAuth() {
+            const idToken = localStorage.getItem('idToken');
+            if (!idToken) {
+                showLoginModal();
+                return false;
+            }
+            
+            try {
+                // Decode token to check expiration
+                const payload = JSON.parse(atob(idToken.split('.')[1]));
+                const expiration = payload.exp * 1000;
+                
+                if (Date.now() > expiration) {
+                    localStorage.clear();
+                    showLoginModal();
+                    return false;
+                }
+                
+                document.getElementById('userEmail').textContent = payload.email || 'User';
+                return true;
+            } catch (e) {
+                localStorage.clear();
+                showLoginModal();
+                return false;
+            }
+        }
+
+        function showLoginModal() {
+            const modal = new bootstrap.Modal(document.getElementById('loginModal'));
+            modal.show();
+        }
+
+        function signOut() {
+            localStorage.clear();
+            showToast('Logged out successfully', 'success');
+            setTimeout(() => location.reload(), 1000);
+        }
+
+        // Page Navigation
+        function showPage(pageName) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.style.display = 'none';
+            });
+            
+            document.getElementById(pageName + 'Page').style.display = 'block';
+            
+            // Update active nav link
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Load page-specific data
+            if (pageName === 'dashboard') loadDashboard();
+            if (pageName === 'myfiles') loadMyFiles();
+            if (pageName === 'notifications') loadSubscriptions();
+        }
+
+        // Toast Notifications
+        function showToast(message, type = 'info') {
+            const toastHtml = `
+                <div class="toast align-items-center text-white bg-${type} border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `;
+            
+            const container = document.querySelector('.notification-toast');
+            container.innerHTML = toastHtml;
+            const toast = new bootstrap.Toast(container.querySelector('.toast'));
+            toast.show();
+        }
+
+        // File Upload
+        function setupDropZone() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+
+            dropZone.addEventListener('click', () => fileInput.click());
+            
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragover');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+        }
+
+        async function handleFiles(files) {
+            if (!checkAuth()) return;
+            
+            document.getElementById('uploadQueue').style.display = 'block';
+            const uploadList = document.getElementById('uploadList');
+            uploadList.innerHTML = '';
+            
+            for (let file of files) {
+                const fileId = 'file-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                const fileHtml = `
+                    <div class="file-item" id="${fileId}">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-file-earmark me-2"></i>
+                                <span>${file.name}</span>
+                                <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
+                            </div>
+                            <div>
+                                <span class="upload-status badge bg-warning">Pending</span>
+                            </div>
+                        </div>
+                        <div class="progress mt-2" style="height: 5px;">
+                            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                `;
+                uploadList.insertAdjacentHTML('beforeend', fileHtml);
+                
+                await uploadFile(file, fileId);
+            }
+        }
+
+        async function uploadFile(file, fileId) {
+            const fileElement = document.getElementById(fileId);
+            const statusElement = fileElement.querySelector('.upload-status');
+            const progressBar = fileElement.querySelector('.progress-bar');
+            
+            try {
+                statusElement.textContent = 'Getting URL...';
+                statusElement.className = 'upload-status badge bg-info';
+                
+                // Get presigned URL
+                const response = await fetch(`${config.apiGatewayUrl}/upload/presign?filename=${encodeURIComponent(file.name)}`, {
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken')
+                    }
+                });
+                
+                if (!response.ok) throw new Error('Failed to get upload URL');
+                
+                const data = await response.json();
+                
+                // Upload to S3
+                statusElement.textContent = 'Uploading...';
+                progressBar.style.width = '50%';
+                
+                const uploadResponse = await fetch(data.uploadUrl, {
+                    method: 'PUT',
+                    body: file,
+                    headers: {
+                        'Content-Type': file.type
+                    }
+                });
+                
+                if (!uploadResponse.ok) throw new Error('Upload failed');
+                
+                progressBar.style.width = '100%';
+                statusElement.textContent = 'Complete';
+                statusElement.className = 'upload-status badge bg-success';
+                
+                showToast(`${file.name} uploaded successfully!`, 'success');
+                
+            } catch (error) {
+                console.error('Upload error:', error);
+                statusElement.textContent = 'Failed';
+                statusElement.className = 'upload-status badge bg-danger';
+                showToast(`Failed to upload ${file.name}: ${error.message}`, 'danger');
+            }
+        }
+
+        // Search Functions
+        function addSearchTag() {
+            const species = document.getElementById('speciesSelect').value;
+            const count = document.getElementById('countInput').value;
+            
+            if (!species) {
+                showToast('Please select a species', 'warning');
+                return;
+            }
+            
+            const tagHtml = `
+                <div class="search-tag">
+                    ${species}: ${count}
+                    <button onclick="this.parentElement.remove()">
+                        <i class="bi bi-x"></i>
+                    </button>
+                </div>
+            `;
+            
+            document.getElementById('searchTags').insertAdjacentHTML('beforeend', tagHtml);
+            document.getElementById('speciesSelect').value = '';
+            document.getElementById('countInput').value = 1;
+        }
+
+        async function searchByTags() {
+            if (!checkAuth()) return;
+            
+            const tags = {};
+            document.querySelectorAll('.search-tag').forEach(tag => {
+                const [species, count] = tag.textContent.trim().split(':');
+                tags[species.trim()] = parseInt(count);
+            });
+            
+            if (Object.keys(tags).length === 0) {
+                showToast('Please add at least one tag', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${config.apiGatewayUrl}/v1/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(tags)
+                });
+                
+                if (!response.ok) throw new Error('Search failed');
+                
+                const data = await response.json();
+                displaySearchResults(data.results || data.links || []);
+                
+            } catch (error) {
+                console.error('Search error:', error);
+                showToast('Search failed: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function searchBySpeciesOnly() {
+            if (!checkAuth()) return;
+            
+            const species = document.getElementById('speciesOnlySelect').value;
+            if (!species) {
+                showToast('Please select a species', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const searchCriteria = {};
+                searchCriteria[species] = 1; // At least one
+                
+                const response = await fetch(`${config.apiGatewayUrl}/v1/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(searchCriteria)
+                });
+                
+                if (!response.ok) throw new Error('Search failed');
+                
+                const data = await response.json();
+                displaySearchResults(data.results || data.links || []);
+                
+            } catch (error) {
+                console.error('Search error:', error);
+                showToast('Search failed: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function resolveToOriginal() {
+            if (!checkAuth()) return;
+            
+            const thumbnailUrl = document.getElementById('thumbnailUrl').value.trim();
+            if (!thumbnailUrl) {
+                showToast('Please enter a thumbnail URL', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${config.apiGatewayUrl}/v1/resolve`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ thumbnailUrl: thumbnailUrl })
+                });
+                
+                if (!response.ok) throw new Error('Resolution failed');
+                
+                const data = await response.json();
+                
+                // Display the original URL
+                const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+                document.getElementById('fullImage').src = data.originalUrl;
+                document.getElementById('downloadLink').href = data.originalUrl;
+                modal.show();
+                
+            } catch (error) {
+                console.error('Resolve error:', error);
+                showToast('Failed to resolve thumbnail: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function searchByFile() {
+            if (!checkAuth()) return;
+            
+            const fileInput = document.getElementById('searchFileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showToast('Please select a file', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(`${config.apiGatewayUrl}/v1/search-by-file`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken')
+                    },
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error('Search failed');
+                
+                const data = await response.json();
+                displaySearchResults(data.results || data.links || []);
+                
+            } catch (error) {
+                console.error('Search error:', error);
+                showToast('Search failed: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displaySearchResults(urls) {
+            const resultsContainer = document.getElementById('searchResults');
+            const resultsInfo = document.getElementById('searchResultsInfo');
+            
+            if (!urls || urls.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-muted w-100 text-center">No results found</p>';
+                resultsInfo.innerHTML = '';
+                return;
+            }
+            
+            resultsInfo.innerHTML = `<div class="alert alert-info">Found ${urls.length} results</div>`;
+            resultsContainer.innerHTML = '';
+            
+            urls.forEach((url, index) => {
+                const isVideo = url.includes('.mp4') || url.includes('.avi') || url.includes('.mov');
+                const isAudio = url.includes('.mp3') || url.includes('.wav');
+                const isThumbnail = url.includes('thumbnail') || url.includes('thumb');
+                
+                let content = '';
+                if (isVideo) {
+                    content = `
+                        <div class="text-center p-3">
+                            <i class="bi bi-camera-video" style="font-size: 3rem;"></i>
+                            <p class="mt-2">Video File</p>
+                            <a href="${url}" class="btn btn-sm btn-primary" download>
+                                <i class="bi bi-download"></i> Download
+                            </a>
+                        </div>
+                    `;
+                } else if (isAudio) {
+                    content = `
+                        <div class="text-center p-3">
+                            <i class="bi bi-music-note-beamed" style="font-size: 3rem;"></i>
+                            <p class="mt-2">Audio File</p>
+                            <audio controls class="w-100">
+                                <source src="${url}" type="audio/mpeg">
+                            </audio>
+                        </div>
+                    `;
+                } else {
+                    content = `
+                        <img src="${url}" class="thumbnail" alt="Result ${index + 1}" 
+                             onclick="showFullImage('${url}', ${isThumbnail})">
+                        <div class="thumbnail-overlay">
+                            <small>Click to ${isThumbnail ? 'get original' : 'preview'}</small>
+                        </div>
+                    `;
+                }
+                
+                const html = `
+                    <div class="thumbnail-container">
+                        <input type="checkbox" class="form-check-input position-absolute top-0 start-0 m-2" 
+                               value="${url}" onchange="updateSelectedFiles()">
+                        ${content}
+                    </div>
+                `;
+                
+                resultsContainer.insertAdjacentHTML('beforeend', html);
+            });
+        }
+
+        async function showFullImage(url, isThumbnail) {
+            if (isThumbnail && checkAuth()) {
+                // If it's a thumbnail, resolve to original first
+                showLoading(true);
+                try {
+                    const response = await fetch(`${config.apiGatewayUrl}/v1/resolve`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': localStorage.getItem('idToken'),
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ thumbnailUrl: url })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        url = data.originalUrl;
+                    }
+                } catch (error) {
+                    console.error('Failed to resolve thumbnail:', error);
+                } finally {
+                    showLoading(false);
+                }
+            }
+            
+            const modal = new bootstrap.Modal(document.getElementById('imageModal'));
+            document.getElementById('fullImage').src = url;
+            document.getElementById('downloadLink').href = url;
+            modal.show();
+        }
+
+        // Bulk Operations
+        function updateSelectedFiles() {
+            const checkboxes = document.querySelectorAll('#searchResults input[type="checkbox"]:checked');
+            selectedFiles = new Set(Array.from(checkboxes).map(cb => cb.value));
+            
+            document.getElementById('selectedFilesInfo').innerHTML = `
+                <span class="badge bg-secondary">${selectedFiles.size} files selected</span>
+            `;
+        }
+
+        function selectAllResults() {
+            document.querySelectorAll('#searchResults input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+            });
+            updateSelectedFiles();
+        }
+
+        function deselectAllResults() {
+            document.querySelectorAll('#searchResults input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+            });
+            updateSelectedFiles();
+        }
+
+        async function bulkAddTags() {
+            if (!checkAuth()) return;
+            
+            const species = document.getElementById('bulkTagSpecies').value;
+            const count = document.getElementById('bulkTagCount').value;
+            
+            if (!species || selectedFiles.size === 0) {
+                showToast('Please select files and specify tags', 'warning');
+                return;
+            }
+            
+            await bulkTagOperation(1, species, count);
+        }
+
+        async function bulkRemoveTags() {
+            if (!checkAuth()) return;
+            
+            const species = document.getElementById('bulkTagSpecies').value;
+            const count = document.getElementById('bulkTagCount').value;
+            
+            if (!species || selectedFiles.size === 0) {
+                showToast('Please select files and specify tags', 'warning');
+                return;
+            }
+            
+            await bulkTagOperation(0, species, count);
+        }
+
+        async function bulkTagOperation(operation, species, count) {
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${config.apiGatewayUrl}/v1/tags/update`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        url: Array.from(selectedFiles),
+                        operation: operation,
+                        tags: [`${species},${count}`]
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Tag update failed');
+                
+                showToast(`Tags ${operation === 1 ? 'added' : 'removed'} successfully!`, 'success');
+                
+                // Clear selections
+                deselectAllResults();
+                document.getElementById('bulkTagSpecies').value = '';
+                document.getElementById('bulkTagCount').value = 1;
+                
+            } catch (error) {
+                console.error('Tag operation error:', error);
+                showToast('Failed to update tags: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function bulkDeleteFiles() {
+            if (!checkAuth()) return;
+            
+            if (selectedFiles.size === 0) {
+                showToast('Please select files to delete', 'warning');
+                return;
+            }
+            
+            if (!confirm(`Are you sure you want to delete ${selectedFiles.size} files? This cannot be undone.`)) {
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                // Extract file keys from URLs
+                const fileKeys = Array.from(selectedFiles).map(url => {
+                    const parts = url.split('.amazonaws.com/');
+                    return parts.length > 1 ? parts[1] : url;
+                });
+                
+                const response = await fetch(`${config.apiGatewayUrl}/v1/files/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fileKeys: fileKeys
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Delete failed');
+                
+                showToast(`${selectedFiles.size} files deleted successfully!`, 'success');
+                
+                // Remove deleted items from display
+                document.querySelectorAll('#searchResults input[type="checkbox"]:checked').forEach(cb => {
+                    cb.closest('.thumbnail-container').remove();
+                });
+                
+                selectedFiles.clear();
+                updateSelectedFiles();
+                
+            } catch (error) {
+                console.error('Delete error:', error);
+                showToast('Failed to delete files: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // My Files Management
+        async function loadMyFiles() {
+            if (!checkAuth()) return;
+            
+            showLoading(true);
+            const filesList = document.getElementById('myFilesList');
+            
+            try {
+                // Search for all files (you might need a different endpoint for user's files)
+                const response = await fetch(`${config.apiGatewayUrl}/v1/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({}) // Empty search returns all user's files
+                });
+                
+                if (!response.ok) throw new Error('Failed to load files');
+                
+                const data = await response.json();
+                const files = data.results || data.links || [];
+                
+                if (files.length === 0) {
+                    filesList.innerHTML = '<p class="text-muted text-center">No files uploaded yet</p>';
+                    return;
+                }
+                
+                filesList.innerHTML = files.map((url, index) => {
+                    const fileName = url.split('/').pop();
+                    const fileType = getFileType(url);
+                    const icon = getFileIcon(fileType);
+                    
+                    return `
+                        <div class="file-item">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <input type="checkbox" class="form-check-input me-2" value="${url}">
+                                    <i class="${icon} me-2"></i>
+                                    <span>${fileName}</span>
+                                </div>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewFile('${url}')">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning" onclick="editFileTags('${url}')">
+                                        <i class="bi bi-tags"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteFile('${url}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+            } catch (error) {
+                console.error('Load files error:', error);
+                filesList.innerHTML = '<p class="text-danger text-center">Failed to load files</p>';
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function refreshMyFiles() {
+            loadMyFiles();
+        }
+
+        async function deleteSelectedFiles() {
+            const checkboxes = document.querySelectorAll('#myFilesList input[type="checkbox"]:checked');
+            const urls = Array.from(checkboxes).map(cb => cb.value);
+            
+            if (urls.length === 0) {
+                showToast('Please select files to delete', 'warning');
+                return;
+            }
+            
+            if (!confirm(`Delete ${urls.length} files?`)) return;
+            
+            selectedFiles = new Set(urls);
+            await bulkDeleteFiles();
+            loadMyFiles();
+        }
+
+        async function deleteFile(url) {
+            if (!confirm('Delete this file?')) return;
+            
+            selectedFiles = new Set([url]);
+            await bulkDeleteFiles();
+            loadMyFiles();
+        }
+
+        function viewFile(url) {
+            const fileType = getFileType(url);
+            
+            if (fileType === 'image') {
+                showFullImage(url, false);
+            } else if (fileType === 'video' || fileType === 'audio') {
+                window.open(url, '_blank');
+            }
+        }
+
+        function editFileTags(url) {
+            currentFileUrl = url;
+            const modal = new bootstrap.Modal(document.getElementById('tagModal'));
+            
+            // Load current tags (this would need an API endpoint to get file metadata)
+            document.getElementById('currentTags').innerHTML = '<p class="text-muted">Loading tags...</p>';
+            
+            modal.show();
+        }
+
+        async function modifyTags(operation) {
+            if (!currentFileUrl) return;
+            
+            const species = document.getElementById('tagSpecies').value;
+            const count = document.getElementById('tagCount').value;
+            
+            if (!species) {
+                showToast('Please select species', 'warning');
+                return;
+            }
+            
+            selectedFiles = new Set([currentFileUrl]);
+            await bulkTagOperation(operation, species, count);
+            
+            bootstrap.Modal.getInstance(document.getElementById('tagModal')).hide();
+        }
+
+        // Notifications
+        async function loadSubscriptions() {
+            if (!checkAuth()) return;
+            
+            // This would load existing subscriptions
+            // For now, show placeholder
+            document.getElementById('subscriptionsList').innerHTML = `
+                <div class="list-group">
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-bell me-2"></i>
+                                <span>Crow notifications</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" onclick="unsubscribe('crow')">
+                                <i class="bi bi-bell-slash"></i> Unsubscribe
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function subscribe(event) {
+            event.preventDefault();
+            if (!checkAuth()) return;
+            
+            const email = document.getElementById('notificationEmail').value;
+            const species = document.getElementById('notificationSpecies').value;
+            
+            if (!email || !species) {
+                showToast('Please fill all fields', 'warning');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${config.apiGatewayUrl}/v1/subscribe`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, species })
+                });
+                
+                if (!response.ok) throw new Error('Subscription failed');
+                
+                showToast('Subscribed successfully!', 'success');
+                document.getElementById('subscriptionForm').reset();
+                loadSubscriptions();
+                
+            } catch (error) {
+                console.error('Subscribe error:', error);
+                showToast('Failed to subscribe: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function unsubscribe(species) {
+            if (!checkAuth()) return;
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch(`${config.apiGatewayUrl}/v1/unsubscribe`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': localStorage.getItem('idToken'),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        email: document.getElementById('userEmail').textContent,
+                        species 
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Unsubscribe failed');
+                
+                showToast('Unsubscribed successfully!', 'success');
+                loadSubscriptions();
+                
+            } catch (error) {
+                console.error('Unsubscribe error:', error);
+                showToast('Failed to unsubscribe: ' + error.message, 'danger');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Dashboard
+        async function loadDashboard() {
+            if (!checkAuth()) return;
+            
+            // Load dashboard statistics
+            // This would require additional API endpoints
+            document.getElementById('totalFiles').textContent = '0';
+            document.getElementById('totalTags').textContent = '0';
+            document.getElementById('recentUploads').textContent = '0';
+            document.getElementById('activeNotifications').textContent = '0';
+            
+            // Load recent activity
+            document.getElementById('recentActivity').innerHTML = `
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">File uploaded</h6>
+                        <small>3 mins ago</small>
+                    </div>
+                    <p class="mb-1">bird_photo_001.jpg</p>
+                    <small>Tags: crow (2), pigeon (1)</small>
+                </div>
+            `;
+        }
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Login form
+            document.getElementById('loginForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const email = document.getElementById('loginEmail').value;
+                const password = document.getElementById('loginPassword').value;
+                
+                // Simulate login - in real app, call Cognito
+                showToast('Login functionality needs Cognito integration', 'info');
+                
+                // For demo, store fake token
+                const fakeToken = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJleHAiOjk5OTk5OTk5OTl9.fake';
+                localStorage.setItem('idToken', fakeToken);
+                
+                bootstrap.Modal.getInstance(document.getElementById('loginModal')).hide();
+                location.reload();
+            });
+            
+            // Signup form
+            document.getElementById('signupForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                showToast('Signup functionality needs Cognito integration', 'info');
+            });
+            
+            // Subscription form
+            document.getElementById('subscriptionForm').addEventListener('submit', subscribe);
+        }
+
+        // Utility Functions
+        function formatFileSize(bytes) {
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            if (bytes === 0) return '0 Bytes';
+            const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+            return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+        }
+
+        function getFileType(url) {
+            const ext = url.split('.').pop().toLowerCase();
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return 'image';
+            if (['mp4', 'avi', 'mov'].includes(ext)) return 'video';
+            if (['mp3', 'wav'].includes(ext)) return 'audio';
+            return 'other';
+        }
+
+        function getFileIcon(type) {
+            switch (type) {
+                case 'image': return 'bi bi-image';
+                case 'video': return 'bi bi-camera-video';
+                case 'audio': return 'bi bi-music-note-beamed';
+                default: return 'bi bi-file-earmark';
+            }
+        }
+
+        function showLoading(show) {
+            document.querySelector('.loading-overlay').style.display = show ? 'flex' : 'none';
+        }
+
+        // Profile
+        function showProfile() {
+            showToast('Profile page coming soon', 'info');
+        }
+    </script>
+</body>
+</html>
