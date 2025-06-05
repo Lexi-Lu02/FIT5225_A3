@@ -95,7 +95,7 @@ Resources:
             MaxAge: 3000
 
   # DynamoDB Table
-    DBWriteLambda:
+  DBWriteLambda:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: WriteToDynamo
@@ -107,6 +107,7 @@ Resources:
           DDB_TABLE_NAME: BirdTagMetadataDev
           S3_UPLOAD_BUCKET: birdtag-uploads-dev
           S3_THUMBNAIL_BUCKET: birdtag-thumbs-dev
+
 
 
   # Lambda Functions
