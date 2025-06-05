@@ -1,47 +1,50 @@
 import boto3
-import json
 import os
+import json
 from datetime import datetime
 
-# Initialise DynamoDB resources
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['DDB_TABLE_NAME'])
+# Initialize DynamoDB
+TABLE_NAME = os.environ["DDB_TABLE_NAME"]
+dynamodb = boto3.resource("dynamodb")
+table = dynamodb.Table(TABLE_NAME)
 
-S3_UPLOAD_BUCKET = os.environ.get('S3_UPLOAD_BUCKET', '')
-S3_THUMBNAIL_BUCKET = os.environ.get('S3_THUMBNAIL_BUCKET', '')
+def write_detection_result(file_key, tags, file_type, source, file_url="", thumbnail_url=""):
+    tags_array = [f"{k},{v}" for k, v in tags.items()]
+
+    item = {
+        "fileKey": file_key,
+        "tags": tags_array,
+        "fileType": file_type,
+        "uploadTime": datetime.utcnow().isoformat(),
+        "source": source,
+        "status": "completed"
+    }
+
+    if file_url:
+        item["fileUrl"] = file_url
+    if thumbnail_url:
+        item["thumbnailUrl"] = thumbnail_url
+
+    table.put_item(Item=item)
 
 def lambda_handler(event, context):
     try:
         file_key = event["fileKey"]
         tags_dict = event.get("tags", {})
         file_type = event.get("fileType", "audio")
-        thumbnail = event.get("thumbnailUrl", "")  
-        file_url = event.get("fileUrl", "")        
+        file_url = event.get("fileUrl", "")
+        thumbnail = event.get("thumbnailUrl", "")
         source = event.get("source", "BirdNET")
 
-        # Convert a dictionary of labels into an array, e.g. [‘crow,3’, ‘owl,1’].
-        tags_array = [f"{k},{v}" for k, v in tags_dict.items()]
+        write_detection_result(
+            file_key=file_key,
+            tags=tags_dict,
+            file_type=file_type,
+            source=source,
+            file_url=file_url,
+            thumbnail_url=thumbnail
+        )
 
-        # Constructing a record entry for DynamoDB to write to
-        item = {
-            "fileKey": file_key,
-            "tags": tags_array,
-            "fileType": file_type,
-            "uploadTime": datetime.utcnow().isoformat(),
-            "source": source,
-            "status": "completed"
-        }
-
-        # Write if the event contains link information
-        if file_url:
-            item["fileUrl"] = file_url
-        if thumbnail:
-            item["thumbnailUrl"] = thumbnail
-
-        # Perform a write operation
-        table.put_item(Item=item)
-
-        # Returns a successful write result
         return {
             "statusCode": 200,
             "body": json.dumps({
@@ -51,7 +54,6 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        # Error handling: return 500 and error details
         return {
             "statusCode": 500,
             "body": json.dumps({
