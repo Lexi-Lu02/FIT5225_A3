@@ -6,8 +6,6 @@ import os
 from decimal import Decimal
 
 dynamodb = boto3.resource('dynamodb')
-s3_client = boto3.client('s3')
-
 TABLE_NAME = os.environ['DYNAMODB_TABLE']
 MEDIA_BUCKET = os.environ['MEDIA_BUCKET']
 
@@ -16,8 +14,12 @@ def lambda_handler(event, context):
     try:
         path = event['path']
         
-        if path == '/v1/search':
+        if path == '/v1/search/tags':
             return search_by_tags(event)
+        elif path == '/v1/search/species':
+            return search_by_species(event)
+        elif path == '/v1/search/thumbnails':
+            return search_by_thumbnails(event)
         elif path == '/v1/search-by-file':
             return search_by_file(event)
         elif path == '/v1/resolve':
@@ -44,46 +46,70 @@ def lambda_handler(event, context):
         }
 
 def search_by_tags(event):
-    """Search files by bird tags - handles both with counts and species only"""
+    """Search files by bird tags with minimum counts"""
     try:
         body = json.loads(event['body'])
         
         # Parse search criteria
         search_criteria = {}
-        for bird, count in body.items():
-            if isinstance(count, int):
-                search_criteria[bird] = count
-            else:
-                # Handle case where count might be string
-                search_criteria[bird] = int(count) if count else 1
+        if 'tags' in body:
+            for bird, count in body['tags'].items():
+                if isinstance(count, int):
+                    search_criteria[bird] = count
+                else:
+                    search_criteria[bird] = int(count) if count else 1
         
         # Query database
         table = dynamodb.Table(TABLE_NAME)
         
-        # Scan all items (in production, consider using GSI for better performance)
-        response = table.scan()
+        # Build filter expression
+        filter_expressions = []
+        expression_attr_values = {}
+        expression_attr_names = {}
+        
+        # Add status filter
+        filter_expressions.append('#status = :status')
+        expression_attr_values[':status'] = 'completed'
+        expression_attr_names['#status'] = 'status'
+        
+        # Add tags filter if criteria exist
+        if search_criteria:
+            filter_expressions.append('attribute_exists(tags)')
+        
+        # Combine filter expressions
+        filter_expression = ' AND '.join(filter_expressions)
+        
+        # Scan with filter
+        response = table.scan(
+            FilterExpression=filter_expression,
+            ExpressionAttributeValues=expression_attr_values,
+            ExpressionAttributeNames=expression_attr_names
+        )
         items = response['Items']
         
         # Continue scanning if there are more items
         while 'LastEvaluatedKey' in response:
-            response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            response = table.scan(
+                FilterExpression=filter_expression,
+                ExpressionAttributeValues=expression_attr_values,
+                ExpressionAttributeNames=expression_attr_names,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
             items.extend(response['Items'])
         
-        # Filter results based on criteria
+        # Filter and process results
         matching_files = []
         for item in items:
-            if item.get('status') == 'completed' and 'tags' in item and item['tags']:
-                if matches_criteria(item['tags'], search_criteria):
-                    # Determine what URL to return based on file type
-                    file_url = item.get('fileUrl', '')
-                    thumbnail_url = item.get('thumbnailUrl', '')
-                    
-                    # For images, return thumbnail if available
-                    if is_image_file(file_url) and thumbnail_url:
-                        matching_files.append(thumbnail_url)
-                    else:
-                        # For videos and audio, return full URL
-                        matching_files.append(file_url)
+            if not item.get('tags'):
+                continue
+                
+            if matches_criteria(item['tags'], search_criteria):
+                file_url = item.get('fileUrl', '')
+                matching_files.append({
+                    'fileUrl': file_url,
+                    'fileKey': item.get('fileKey', ''),
+                    'tags': item.get('tags', [])
+                })
         
         return {
             'statusCode': 200,
@@ -94,13 +120,12 @@ def search_by_tags(event):
                 'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
             },
             'body': json.dumps({
-                'results': matching_files,
-                'links': matching_files  # Support both 'results' and 'links' for compatibility
-            })
+                'results': matching_files
+            }, cls=DecimalEncoder)
         }
         
     except Exception as e:
-        print(f"Search error: {str(e)}")
+        print(f"Search by tags error: {str(e)}")
         return {
             'statusCode': 500,
             'headers': {
@@ -110,66 +135,231 @@ def search_by_tags(event):
             'body': json.dumps({'error': str(e)})
         }
 
-def matches_criteria(tags, criteria):
-    """Check if tags match search criteria (AND operation)"""
-    tag_dict = {}
-    
-    # Parse tags into dictionary
-    for tag in tags:
-        if ',' in tag:
-            species, count = tag.split(',', 1)  # Split only on first comma
-            try:
-                tag_dict[species.strip()] = int(count.strip())
-            except ValueError:
-                continue
-    
-    # Check if ALL criteria are met (AND operation)
-    for species, min_count in criteria.items():
-        if species not in tag_dict or tag_dict[species] < min_count:
-            return False
-    
-    return True
-
-def search_by_file(event):
-    """Search by uploading a file and finding similar tagged files"""
+def search_by_species(event):
+    """Search files by species names"""
     try:
-        # Check if it's base64 encoded (API Gateway does this for binary data)
-        if event.get('isBase64Encoded', False):
-            body = base64.b64decode(event['body'])
-        else:
-            body = event['body']
+        body = json.loads(event['body'])
         
-        # This would call the YOLO model
-        detected_tags = model_processing()
+        # Parse species search
+        search_species = set()
+        if 'species' in body:
+            search_species = set(body['species'])
         
-        # Extract just the species from detected tags
-        detected_species = set()
-        for tag in detected_tags:
-            if ',' in tag:
-                species, _ = tag.split(',', 1)
-                detected_species.add(species.strip())
-        
-        # Search for files with ANY of these species
+        # Query database
         table = dynamodb.Table(TABLE_NAME)
-        response = table.scan()
+        
+        # Build filter expression
+        filter_expressions = []
+        expression_attr_values = {}
+        expression_attr_names = {}
+        
+        # Add status filter
+        filter_expressions.append('#status = :status')
+        expression_attr_values[':status'] = 'completed'
+        expression_attr_names['#status'] = 'status'
+        
+        # Add tags filter
+        filter_expressions.append('attribute_exists(tags)')
+        
+        # Combine filter expressions
+        filter_expression = ' AND '.join(filter_expressions)
+        
+        # Scan with filter
+        response = table.scan(
+            FilterExpression=filter_expression,
+            ExpressionAttributeValues=expression_attr_values,
+            ExpressionAttributeNames=expression_attr_names
+        )
         items = response['Items']
         
+        # Continue scanning if there are more items
         while 'LastEvaluatedKey' in response:
-            response = table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            response = table.scan(
+                FilterExpression=filter_expression,
+                ExpressionAttributeValues=expression_attr_values,
+                ExpressionAttributeNames=expression_attr_names,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
             items.extend(response['Items'])
         
+        # Filter and process results
         matching_files = []
         for item in items:
-            if item.get('status') == 'completed' and 'tags' in item and item['tags']:
-                if has_any_matching_species(item['tags'], detected_species):
-                    # Return appropriate URL
-                    file_url = item.get('fileUrl', '')
-                    thumbnail_url = item.get('thumbnailUrl', '')
-                    
-                    if is_image_file(file_url) and thumbnail_url:
-                        matching_files.append(thumbnail_url)
-                    else:
-                        matching_files.append(file_url)
+            if not item.get('tags'):
+                continue
+                
+            if has_any_matching_species(item['tags'], search_species):
+                file_url = item.get('fileUrl', '')
+                matching_files.append({
+                    'fileUrl': file_url,
+                    'fileKey': item.get('fileKey', ''),
+                    'tags': item.get('tags', [])
+                })
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+            },
+            'body': json.dumps({
+                'results': matching_files
+            }, cls=DecimalEncoder)
+        }
+        
+    except Exception as e:
+        print(f"Search by species error: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'error': str(e)})
+        }
+
+def search_by_thumbnails(event):
+    """Search files with available thumbnails"""
+    try:
+        # Query database
+        table = dynamodb.Table(TABLE_NAME)
+        
+        # Build filter expression
+        filter_expressions = []
+        expression_attr_values = {}
+        expression_attr_names = {}
+        
+        # Add status filter
+        filter_expressions.append('#status = :status')
+        expression_attr_values[':status'] = 'completed'
+        expression_attr_names['#status'] = 'status'
+        
+        # Add thumbnail filter
+        filter_expressions.append('attribute_exists(thumbnailUrl)')
+        
+        # Combine filter expressions
+        filter_expression = ' AND '.join(filter_expressions)
+        
+        # Scan with filter
+        response = table.scan(
+            FilterExpression=filter_expression,
+            ExpressionAttributeValues=expression_attr_values,
+            ExpressionAttributeNames=expression_attr_names
+        )
+        items = response['Items']
+        
+        # Continue scanning if there are more items
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression=filter_expression,
+                ExpressionAttributeValues=expression_attr_values,
+                ExpressionAttributeNames=expression_attr_names,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response['Items'])
+        
+        # Process results
+        matching_files = []
+        for item in items:
+            file_url = item.get('fileUrl', '')
+            thumbnail_url = item.get('thumbnailUrl', '')
+            
+            if thumbnail_url:
+                matching_files.append({
+                    'thumbnailUrl': thumbnail_url,
+                    'fileUrl': file_url,
+                    'fileKey': item.get('fileKey', ''),
+                    'tags': item.get('tags', [])
+                })
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET'
+            },
+            'body': json.dumps({
+                'results': matching_files
+            }, cls=DecimalEncoder)
+        }
+        
+    except Exception as e:
+        print(f"Search by thumbnails error: {str(e)}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': json.dumps({'error': str(e)})
+        }
+
+def search_by_file(event):
+    """Search by tags provided for an uploaded file and find similar tagged files"""
+    try:
+        body = json.loads(event['body'])
+        
+        # Expecting tags in the request body
+        search_tags = set()
+        if 'tags' in body:
+            search_tags = set(body['tags'])  # e.g., ["crow", "pigeon"]
+        else:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({'error': 'No tags provided for search'})
+            }
+        
+        # Query database
+        table = dynamodb.Table(TABLE_NAME)
+        filter_expressions = []
+        expression_attr_values = {}
+        expression_attr_names = {}
+        
+        filter_expressions.append('#status = :status')
+        expression_attr_values[':status'] = 'completed'
+        expression_attr_names['#status'] = 'status'
+        filter_expressions.append('attribute_exists(tags)')
+        filter_expression = ' AND '.join(filter_expressions)
+        
+        response = table.scan(
+            FilterExpression=filter_expression,
+            ExpressionAttributeValues=expression_attr_values,
+            ExpressionAttributeNames=expression_attr_names
+        )
+        items = response['Items']
+        
+        # Continue scanning if there are more items
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression=filter_expression,
+                ExpressionAttributeValues=expression_attr_values,
+                ExpressionAttributeNames=expression_attr_names,
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response['Items'])
+        
+        # Find files with ANY of these tags/species
+        matching_files = []
+        for item in items:
+            if not item.get('tags'):
+                continue
+            if has_any_matching_species(item['tags'], search_tags):
+                file_url = item.get('fileUrl', '')
+                thumbnail_url = item.get('thumbnailUrl', '')
+                matching_files.append({
+                    'fileUrl': file_url,
+                    'thumbnailUrl': thumbnail_url,
+                    'fileKey': item.get('fileKey', ''),
+                    'tags': item.get('tags', [])
+                })
         
         return {
             'statusCode': 200,
@@ -180,9 +370,8 @@ def search_by_file(event):
                 'Access-Control-Allow-Methods': 'OPTIONS,POST'
             },
             'body': json.dumps({
-                'results': matching_files,
-                'detectedTags': list(detected_species)  # Optional: return what was detected
-            })
+                'results': matching_files
+            }, cls=DecimalEncoder)
         }
         
     except Exception as e:
@@ -312,13 +501,6 @@ def is_audio_file(url):
         return False
     lower_url = url.lower()
     return any(lower_url.endswith(ext) for ext in ['.mp3', '.wav', '.m4a', '.flac'])
-
-def model_processing():
-    """actual YOLO model processing"""
-    # 1. Save the uploaded file temporarily
-    # 2. Process with YOLO model
-    # 3. Return detected bird tags
-    return
 
 # Decimal encoder for DynamoDB responses
 class DecimalEncoder(json.JSONEncoder):
