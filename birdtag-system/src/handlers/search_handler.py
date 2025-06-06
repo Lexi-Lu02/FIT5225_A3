@@ -139,16 +139,8 @@ def search_by_file(event):
         else:
             body = event['body']
         
-        # Parse multipart form data
-        # In a real implementation, you would:
-        # 1. Parse the multipart boundary
-        # 2. Extract the file content
-        # 3. Save temporarily and process with YOLO model
-        # 4. Get the detected tags
-        
-        # For now, simulate detected tags
-        # In production, this would call the YOLO model
-        detected_tags = simulate_file_processing()
+        # This would call the YOLO model
+        detected_tags = model_processing()
         
         # Extract just the species from detected tags
         detected_species = set()
