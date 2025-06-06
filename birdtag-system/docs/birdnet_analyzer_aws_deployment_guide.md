@@ -9,9 +9,13 @@
 - Source code files:
   - `birdnet_analyzer_lambda.py`
   - `template.yaml`
-  - `requirements.txt`
+  - `requirements_birdnetanalyzer.txt`
 
-### 1.2 AWS Account Setup
+### 1.2 Python Version
+- Python 3.11 is required for BirdNET-Analyzer
+- Note: This is different from the bird detection function which uses Python 3.9
+
+### 1.3 AWS Account Setup
 - AWS CLI installed and configured
 - SAM CLI installed
 - Appropriate AWS credentials
@@ -106,8 +110,7 @@
        FunctionName: !Sub birdtag-analyzer-${StudentName}
        CodeUri: src/handlers/
        Handler: birdnet_analyzer_lambda.lambda_handler
-       Timeout: 900
-       MemorySize: 2048
+       Runtime: python3.11
        Environment:
          Variables:
            MODEL_BUCKET: !Ref ModelBucket
@@ -126,13 +129,16 @@
                      Value: .wav
    ```
 
-3. Create requirements.txt:
+3. Create requirements file:
    ```
+   # requirements_birdnetanalyzer.txt
+   # Python 3.11 required
    boto3>=1.28.0
    librosa>=0.10.0
    numpy>=1.24.0
    tensorflow>=2.13.0
    soundfile>=0.12.1
+   botocore>=1.31.0
    ```
 
 ## 3. AWS Deployment Steps
@@ -163,13 +169,13 @@
 ### 3.3 Create Lambda Layer
 1. Create layer directory:
    ```bash
-   mkdir -p lambda-layer/python
-   cd lambda-layer
+   mkdir -p layers/birdnet_analyzer/python
+   cd layers/birdnet_analyzer
    ```
 
-2. Install dependencies:
+2. Install dependencies (using Python 3.11):
    ```bash
-   pip install -r ../requirements.txt -t python/
+   python3.11 -m pip install -r requirements.txt -t python/
    ```
 
 3. Create layer zip:
@@ -182,7 +188,8 @@
    aws lambda publish-layer-version \
      --layer-name birdnet-analyzer-deps \
      --description "Dependencies for BirdNET-Analyzer" \
-     --zip-file fileb://../layer.zip
+     --zip-file fileb://../layer.zip \
+     --compatible-runtimes python3.11
    ```
 
 ### 3.4 Deploy SAM Application
@@ -244,6 +251,11 @@
    - Check model file permissions
    - Verify model version compatibility
 
+4. Python Version Issues
+   - Ensure using Python 3.11
+   - Check Lambda layer compatibility
+   - Verify runtime settings
+
 ### 5.2 Debug Commands
 1. Check Lambda status:
    ```bash
@@ -281,7 +293,7 @@
 
 2. Update dependencies:
    ```bash
-   pip install -r requirements.txt --upgrade
+   pip install -r requirements_birdnetanalyzer.txt --upgrade
    # Recreate and update Lambda layer
    ```
 
