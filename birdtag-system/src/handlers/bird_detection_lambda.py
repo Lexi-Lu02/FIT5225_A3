@@ -9,22 +9,22 @@ import tempfile
 import time
 import logging
 
-# 配置日志
+# Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# 初始化AWS客户端
+# Initialize AWS clients
 s3_client = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 
-# 环境变量
+# Environment variables
 MODEL_BUCKET = os.environ.get('MODEL_BUCKET')
 MODEL_KEY = os.environ.get('MODEL_KEY', 'model.pt')
 MEDIA_BUCKET = os.environ.get('MEDIA_BUCKET')
 DYNAMODB_TABLE = os.environ.get('DYNAMODB_TABLE')
 
 def get_cors_headers():
-    """返回CORS头信息"""
+    """Return CORS headers for HTTP responses."""
     return {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
@@ -33,30 +33,30 @@ def get_cors_headers():
 
 def process_image(image_path, model_path, confidence=0.5):
     """
-    处理单张图片并返回检测结果
+    Process a single image and return detection results.
     
     Args:
-        image_path (str): 图片路径
-        model_path (str): 模型路径
-        confidence (float): 置信度阈值
-    
+        image_path (str): Path to the image file
+        model_path (str): Path to the YOLO model
+        confidence (float): Confidence threshold for detections
+        
     Returns:
-        tuple: (检测结果列表, 标注后的图片)
+        tuple: (list of detection results, annotated image)
     """
     try:
-        # 加载模型
+        # Load YOLO model
         model = YOLO(model_path)
         
-        # 读取图片
+        # Read image
         img = cv2.imread(image_path)
         if img is None:
             raise Exception("Failed to read image")
         
-        # 运行检测
+        # Run detection
         result = model(img)[0]
         detections = sv.Detections.from_ultralytics(result)
         
-        # 提取检测结果
+        # Extract detection results
         detection_results = []
         if detections.class_id is not None:
             detections = detections[(detections.confidence > confidence)]
@@ -66,7 +66,7 @@ def process_image(image_path, model_path, confidence=0.5):
                     'confidence': float(conf)
                 })
         
-        # 创建标注图片
+        # Create annotated image
         annotated_img = img.copy()
         if len(detection_results) > 0:
             box_annotator = sv.BoxAnnotator()
@@ -84,24 +84,32 @@ def process_image(image_path, model_path, confidence=0.5):
 
 def lambda_handler(event, context):
     """
-    Lambda处理函数
+    Lambda function handler for processing images.
     
     Args:
-        event (dict): Lambda事件
-        context (object): Lambda上下文
-    
+        event (dict): AWS Lambda event
+        context (object): AWS Lambda context
+        
     Returns:
-        dict: 处理结果
+        dict: Response with processing results
     """
     try:
         logger.info(f"Received event: {json.dumps(event)}")
         
-        # 检查是否是S3触发事件
+        # Handle CORS preflight requests
+        if event.get('httpMethod') == 'OPTIONS':
+            return {
+                'statusCode': 200,
+                'headers': get_cors_headers(),
+                'body': ''
+            }
+        
+        # Check if triggered by S3
         if 'Records' in event and event['Records'][0]['eventSource'] == 'aws:s3':
             bucket = event['Records'][0]['s3']['bucket']['name']
             key = event['Records'][0]['s3']['object']['key']
         else:
-            # 处理API Gateway请求
+            # Handle API Gateway request
             body = json.loads(event.get('body', '{}'))
             bucket = body.get('bucket')
             key = body.get('key')
@@ -113,25 +121,25 @@ def lambda_handler(event, context):
                     'body': json.dumps({'error': 'Missing bucket or key parameter'})
                 }
         
-        # 下载图片到临时文件
+        # Download image to temp file
         with tempfile.NamedTemporaryFile(suffix='.jpg') as tmp_file:
             s3_client.download_file(bucket, key, tmp_file.name)
             
-            # 下载模型文件
+            # Download model file if not present
             model_path = '/tmp/model.pt'
             if not os.path.exists(model_path):
                 s3_client.download_file(MODEL_BUCKET, MODEL_KEY, model_path)
             
-            # 处理图片
+            # Process image
             detection_results, annotated_img = process_image(tmp_file.name, model_path)
             
-            # 保存结果图片
+            # Save result image
             result_key = f"results/{os.path.basename(key)}"
             with tempfile.NamedTemporaryFile(suffix='.jpg') as result_file:
                 cv2.imwrite(result_file.name, annotated_img)
                 s3_client.upload_file(result_file.name, MEDIA_BUCKET, result_key)
             
-            # 保存结果到DynamoDB
+            # Save results to DynamoDB
             table = dynamodb.Table(DYNAMODB_TABLE)
             table.put_item(Item={
                 'fileKey': key,
