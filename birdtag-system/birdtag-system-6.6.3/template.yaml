@@ -1,0 +1,458 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: BirdTag Serverless - AWS Academy Version
+
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 512
+    Runtime: python3.9
+    # Use existing LabRole
+    Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
+    Environment:
+      Variables:
+        DYNAMODB_TABLE: !Ref BirdTagMetadataTable
+        MEDIA_BUCKET: !Ref MediaBucket
+        UPLOAD_PREFIX: uploads/
+        THUMBNAIL_PREFIX: thumbnails/
+    Policies:
+      - CloudWatchLogsFullAccess
+
+Parameters:
+  StudentName:
+    Type: String
+    Description: Your name to make resources unique
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub birdtag-users-${StudentName}
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+        - Name: given_name
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: family_name
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub birdtag-client-${StudentName}
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      CallbackURLs:
+        - http://localhost:3000/callback
+        - http://localhost:5173/home
+      LogoutURLs:
+        - http://localhost:3000/logout
+        - http://localhost:5173/
+      AllowedOAuthFlows:
+        - implicit
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      SupportedIdentityProviders:
+        - COGNITO
+
+  # S3 Bucket for all media files
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub birdtag-media-${StudentName}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldUploads
+            Status: Enabled
+            ExpirationInDays: 30
+            Prefix: uploads/
+          - Id: DeleteOldThumbnails
+            Status: Enabled
+            ExpirationInDays: 30
+            Prefix: thumbnails/
+
+  # S3 Bucket for model files
+  ModelBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub birdtag-models-${StudentName}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3000
+
+  # DynamoDB Table
+  BirdTagMetadataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub BirdTagMetadata-${StudentName}
+      AttributeDefinitions:
+        - AttributeName: fileKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: fileKey
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      AutoScalingConfiguration:
+        MinCapacity: 5
+        MaxCapacity: 100
+        TargetUtilizationPercent: 70
+
+  # Lambda Layers
+  BirdDetectionLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub birdtag-detection-deps-${StudentName}
+      Description: Dependencies for Bird Detection
+      ContentUri: layers/bird_detection/
+      CompatibleRuntimes:
+        - python3.9
+
+  BirdNetAnalyzerLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub birdtag-analyzer-deps-${StudentName}
+      Description: Dependencies for BirdNET Analyzer
+      ContentUri: layers/birdnet_analyzer/
+      CompatibleRuntimes:
+        - python3.11
+
+  # Lambda Functions
+  UploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-upload-${StudentName}
+      CodeUri: src/handlers/
+      Handler: upload_handler.lambda_handler
+
+  ThumbnailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-thumbnail-${StudentName}
+      CodeUri: src/handlers/
+      Handler: thumbnail_handler.lambda_handler
+      Events:
+        S3Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref MediaBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+
+  TaggingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-tagging-${StudentName}
+      CodeUri: src/handlers/
+      Handler: tagging_handler.lambda_handler
+      Timeout: 900
+      MemorySize: 2048
+      Events:
+        S3Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref MediaBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: uploads/
+
+  SearchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-search-${StudentName}
+      CodeUri: src/handlers/
+      Handler: search_handler.lambda_handler
+
+  # New Bird Detection Function
+  BirdDetectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-detection-${StudentName}
+      CodeUri: src/handlers/
+      Handler: bird_detection_lambda.lambda_handler
+      Runtime: python3.9
+      Timeout: 900
+      MemorySize: 2048
+      Layers:
+        - !Ref BirdDetectionLayer
+      Environment:
+        Variables:
+          MODEL_BUCKET: !Ref ModelBucket
+          MODEL_KEY: model.pt
+          MEDIA_BUCKET: !Ref MediaBucket
+          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
+      Events:
+        S3Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref MediaBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .jpg
+                  - Name: suffix
+                    Value: .jpeg
+                  - Name: suffix
+                    Value: .png
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/detect
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  # New BirdNET Analyzer Function
+  BirdNetAnalyzerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-analyzer-${StudentName}
+      CodeUri: src/handlers/
+      Handler: birdnet_analyzer_lambda.lambda_handler
+      Runtime: python3.11
+      Timeout: 900
+      MemorySize: 2048
+      Layers:
+        - !Ref BirdNetAnalyzerLayer
+      Environment:
+        Variables:
+          MODEL_BUCKET: !Ref ModelBucket
+          MEDIA_BUCKET: !Ref MediaBucket
+          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
+      ProvisionedConcurrencyConfig:
+        ProvisionedConcurrentExecutions: 1
+      Events:
+        S3Upload:
+          Type: S3
+          Properties:
+            Bucket: !Ref MediaBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .wav
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/analyze
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  # API Gateway with Cognito Authorizer
+  BirdTagApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: dev
+      CorsConfiguration:
+        AllowMethods:
+          - "*"
+        AllowHeaders:
+          - "*"
+        AllowOrigins:
+          - "*"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}
+              audience:
+                - !Ref UserPoolClient
+
+  # API Routes with Authorization
+  UploadRoute:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-api-upload-${StudentName}
+      CodeUri: src/handlers/
+      Handler: upload_handler.lambda_handler
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /upload/presign
+            Method: GET
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  SearchRoute:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-api-search-${StudentName}
+      CodeUri: src/handlers/
+      Handler: search_handler.lambda_handler
+      Events:
+        SearchEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/search
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        ResolveEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/resolve
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        SearchByFileEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/search-by-file
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  TagManagementRoute:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-api-tags-${StudentName}
+      CodeUri: src/handlers/
+      Handler: tag_management_handler.lambda_handler
+      Events:
+        UpdateTagsEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/tags/update
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        DeleteFilesEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/files/delete
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+  # SNS Topic for notifications
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub birdtag-notifications-${StudentName}
+      DisplayName: BirdTag Notifications
+
+  NotificationRoute:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub birdtag-api-notify-${StudentName}
+      CodeUri: src/handlers/
+      Handler: notification_handler.lambda_handler
+      Environment:
+        Variables:
+          SNS_TOPIC: !Ref NotificationTopic
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
+      Events:
+        SubscribeEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/subscribe
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+        UnsubscribeEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BirdTagApi
+            Path: /v1/unsubscribe
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !Ref UserPoolClient
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${BirdTagApi}.execute-api.${AWS::Region}.amazonaws.com/dev
+  MediaBucketName:
+    Description: S3 Media Bucket Name
+    Value: !Ref MediaBucket
+  ModelBucketName:
+    Description: S3 Model Bucket Name
+    Value: !Ref ModelBucket
+  DynamoDBTableName:
+    Description: DynamoDB Table Name
+    Value: !Ref BirdTagMetadataTable
+  CognitoHostedUIUrl:
+    Description: Cognito Hosted UI URL
+    Value: !Sub https://${UserPool}.auth.${AWS::Region}.amazoncognito.com/login?client_id=${UserPoolClient}&response_type=token&scope=email+openid+profile&redirect_uri=http://localhost:3000/callback
+  SNSTopicArn:
+    Description: SNS Topic ARN for notifications
+    Value: !Ref NotificationTopic
+  BirdDetectionFunction:
+    Description: Bird Detection Lambda Function ARN
+    Value: !GetAtt BirdDetectionFunction.Arn
+  BirdNetAnalyzerFunction:
+    Description: BirdNET Analyzer Lambda Function ARN
+    Value: !GetAtt BirdNetAnalyzerFunction.Arn

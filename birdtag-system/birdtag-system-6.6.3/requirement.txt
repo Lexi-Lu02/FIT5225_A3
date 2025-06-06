@@ -1,0 +1,34 @@
+# AWS SDK
+boto3==1.34.69
+botocore==1.34.69
+
+# Image processing
+opencv-python-headless==4.9.0.80
+numpy==1.26.4
+Pillow==10.2.0
+
+# Bird detection model
+ultralytics==8.1.28
+torch==2.2.1
+torchvision==0.17.1
+supervision==0.18.0
+
+# Audio processing
+librosa==0.10.1
+tensorflow==2.15.1
+soundfile==0.12.1
+resampy==0.4.2
+scikit-learn==1.6.1
+tqdm==4.66.1
+
+# Utilities
+requests==2.31.0
+urllib3==2.1.0
+python-multipart==0.0.9
+
+# Development tools
+pytest==8.0.2
+pytest-cov==4.1.0
+black==24.2.0
+flake8==7.0.0
+moto==5.0.1
