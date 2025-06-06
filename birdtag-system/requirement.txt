@@ -2,7 +2,7 @@
 boto3>=1.28.0
 botocore>=1.31.0
 
-# Image processing (for thumbnail generation)
+# Image processing (for bird detection)
 opencv-python-headless==4.8.1.78
 numpy>=1.24.0,<2.0.0
 Pillow>=10.0.0
@@ -11,7 +11,18 @@ Pillow>=10.0.0
 ultralytics>=8.0.0
 torch>=2.0.0
 torchvision>=0.15.0
+supervision>=0.3.0
+
+# Audio processing (for BirdNET-Analyzer)
+librosa>=0.10.0
+tensorflow>=2.13.0
+soundfile>=0.12.1
 
 # Utilities
 requests>=2.31.0
 urllib3>=2.0.0
+
+# Development tools
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
