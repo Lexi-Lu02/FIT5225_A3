@@ -105,7 +105,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return create_error(e)
         
         path = event['path']
-        base_path = f'/{API_VERSION}/auth'
+        base_path = '/auth'
         
         if path == f'{base_path}/login':
             return handle_login(event, context)
@@ -252,7 +252,10 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'statusCode': 400,
                 'headers': get_cors_headers(),
                 'body': json.dumps({
-                    'error': 'Email, password, and name are required'
+                    'error': {
+                        'code': 'INVALID_REQUEST',
+                        'message': 'Email, password, and name are required'
+                    }
                 })
             }
 
@@ -299,7 +302,10 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'statusCode': 400,
                     'headers': get_cors_headers(),
                     'body': json.dumps({
-                        'error': 'Email already exists'
+                        'error': {
+                            'code': 'USER_EXISTS',
+                            'message': 'Email already exists'
+                        }
                     })
                 }
             else:
@@ -333,6 +339,47 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         BirdTagError: If verification fails
     """
     try:
+        if IS_LOCAL:
+            # Local test mode - verify token only
+            auth_header = event.get('headers', {}).get('Authorization', '')
+            if not auth_header.startswith('Bearer '):
+                return {
+                    'statusCode': 401,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({
+                        'error': {
+                            'code': 'INVALID_TOKEN',
+                            'message': 'Invalid or missing token'
+                        }
+                    })
+                }
+            
+            token = auth_header.split(' ')[1]
+            if token == 'local-test-token':
+                return {
+                    'statusCode': 200,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({
+                        'message': 'Token verification successful (local mode)',
+                        'user': {
+                            'email': 'test@example.com',
+                            'name': 'Test User'
+                        }
+                    })
+                }
+            else:
+                return {
+                    'statusCode': 401,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({
+                        'error': {
+                            'code': 'INVALID_TOKEN',
+                            'message': 'Invalid token'
+                        }
+                    })
+                }
+
+        # Production mode - verify email with code
         body = json.loads(event['body'])
         email = body.get('email')
         code = body.get('code')
@@ -342,17 +389,10 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'statusCode': 400,
                 'headers': get_cors_headers(),
                 'body': json.dumps({
-                    'error': 'Email and verification code are required'
-                })
-            }
-
-        if IS_LOCAL:
-            # Local test mode - simulate successful verification
-            return {
-                'statusCode': 200,
-                'headers': get_cors_headers(),
-                'body': json.dumps({
-                    'message': 'Email verification successful (local mode)'
+                    'error': {
+                        'code': 'INVALID_REQUEST',
+                        'message': 'Email and verification code are required'
+                    }
                 })
             }
 
@@ -377,7 +417,10 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     'statusCode': 400,
                     'headers': get_cors_headers(),
                     'body': json.dumps({
-                        'error': 'Invalid verification code'
+                        'error': {
+                            'code': 'INVALID_CODE',
+                            'message': 'Invalid verification code'
+                        }
                     })
                 }
             else:
