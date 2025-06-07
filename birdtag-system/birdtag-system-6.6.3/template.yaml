@@ -259,7 +259,7 @@ Resources:
 
   # S3 Bucket Notification Configuration
   MediaBucketNotifications:
-    Type: AWS::S3::BucketNotification
+    Type: AWS::S3::BucketNotificationConfiguration
     DependsOn:
       - MediaBucket
       - ThumbnailFunctionS3Permission
