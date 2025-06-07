@@ -170,6 +170,13 @@ Resources:
                 - cognito-idp:AdminSetUserPassword
                 - cognito-idp:AdminGetUser
               Resource: !GetAtt UserPool.Arn
+      Events:
+        Auth:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /auth
+            Method: post
 
   UploadFunction:
     Type: AWS::Serverless::Function
@@ -187,6 +194,13 @@ Resources:
             BucketName: !Ref MediaBucket
         - S3WritePolicy:
             BucketName: !Ref MediaBucket
+      Events:
+        Upload:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /upload
+            Method: post
 
   ThumbnailFunction:
     Type: AWS::Serverless::Function
@@ -355,6 +369,13 @@ Resources:
             TableName: !Ref BirdTagMetadataTable
         - S3ReadPolicy:
             BucketName: !Ref MediaBucket
+      Events:
+        Search:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /search
+            Method: get
 
   StatsFunction:
     Type: AWS::Serverless::Function
@@ -369,6 +390,13 @@ Resources:
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref BirdTagMetadataTable
+      Events:
+        Stats:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /stats
+            Method: get
 
   ModelMonitorFunction:
     Type: AWS::Serverless::Function
@@ -441,6 +469,13 @@ Resources:
             TableName: !Ref BirdTagMetadataTable
         - DynamoDBWritePolicy:
             TableName: !Ref BirdTagMetadataTable
+      Events:
+        Tag:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /tag
+            Method: post
 
   # API Gateway
   Api:
