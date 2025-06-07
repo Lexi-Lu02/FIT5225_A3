@@ -1,0 +1,39 @@
+# AWS SDK - Required for AWS service interactions
+boto3==1.34.69
+botocore==1.34.69
+
+# Image processing - Required for image manipulation and analysis
+opencv-python-headless==4.9.0.80  # Headless version for Lambda environment
+numpy==1.26.4  # Required for numerical operations
+Pillow==10.2.0  # Required for image processing
+
+# Bird detection model - Required for bird detection functionality
+ultralytics==8.1.28  # YOLOv8 model
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.1+cpu  # CPU-only version for Lambda
+torchvision==0.17.1+cpu  # CPU-only version for Lambda
+supervision==0.18.0  # Required for model inference
+
+# Audio processing - Required for audio analysis
+librosa==0.10.1  # Audio processing library
+tflite-runtime==2.14.0  # Lightweight TensorFlow for inference
+soundfile==0.12.1  # Audio file handling
+resampy==0.4.2  # Audio resampling
+scikit-learn==1.6.1  # Required for audio analysis
+tqdm==4.66.1  # Progress bars
+
+# Authentication - Required for user authentication
+bcrypt==4.0.1  # Password hashing
+PyJWT==2.8.0  # JWT token handling
+python-jose==3.3.0  # JWT implementation
+
+# Utilities - Required for general functionality
+requests==2.31.0  # HTTP requests
+python-multipart==0.0.9  # File upload handling
+
+# Development tools - Required for testing and development
+pytest==8.0.2  # Testing framework
+pytest-cov==4.1.0  # Test coverage
+black==24.2.0  # Code formatting
+flake8==7.0.0  # Code linting
+moto==5.0.1  # AWS service mocking 
