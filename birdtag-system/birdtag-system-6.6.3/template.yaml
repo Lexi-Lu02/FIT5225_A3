@@ -1,486 +1,857 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
-Description: BirdTag Serverless - AWS Academy Version
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BirdTag - Media Storage System</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --light-bg: #ecf0f1;
+            --dark-bg: #34495e;
+        }
 
-Globals:
-  Function:
-    Timeout: 300
-    MemorySize: 512
-    Environment:
-      Variables:
-        DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-        MEDIA_BUCKET: !Ref MediaBucket
-        UPLOAD_PREFIX: uploads/
-        THUMBNAIL_PREFIX: thumbnails/
+        /* Dark Mode Variables */
+        [data-theme="dark"] {
+            --primary-color: #ecf0f1;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --light-bg: #2c3e50;
+            --dark-bg: #1a252f;
+            --text-color: #ecf0f1;
+            --card-bg: #34495e;
+        }
 
-Parameters:
-  StudentName:
-    Type: String
-    Description: Your name to make resources unique
+        body {
+            background-color: var(--light-bg);
+            color: var(--primary-color);
+            transition: all 0.3s ease;
+        }
 
-Resources:
-  # Cognito User Pool
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    Properties:
-      UserPoolName: !Sub birdtag-users-${StudentName}
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Required: true
-          Mutable: false
-      UsernameAttributes:
-        - email
-      AutoVerifiedAttributes:
-        - email
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 8
-          RequireUppercase: true
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: false
-      EmailConfiguration:
-        EmailSendingAccount: COGNITO
+        [data-theme="dark"] body {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+        }
 
-  UserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      ClientName: !Sub birdtag-client-${StudentName}
-      UserPoolId: !Ref UserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_USER_PASSWORD_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
-      CallbackURLs:
-        - http://localhost:3000/callback
-        - http://localhost:5173/home
-      LogoutURLs:
-        - http://localhost:3000/logout
-        - http://localhost:5173/
-      AllowedOAuthFlows:
-        - implicit
-      AllowedOAuthScopes:
-        - email
-        - openid
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
-      SupportedIdentityProviders:
-        - COGNITO
+        /* Navigation */
+        .navbar {
+            background-color: var(--primary-color) !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        }
 
-  # S3 Bucket for all media files
-  MediaBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub birdtag-media-${StudentName}-${AWS::AccountId}
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, PUT, POST]
-            AllowedOrigins: ['*']
-            MaxAge: 3000
-      LifecycleConfiguration:
-        Rules:
-          - Id: DeleteOldUploads
-            Status: Enabled
-            ExpirationInDays: 30
-            Prefix: uploads/
-          - Id: DeleteOldThumbnails
-            Status: Enabled
-            ExpirationInDays: 30
-            Prefix: thumbnails/
+        [data-theme="dark"] .navbar {
+            background-color: var(--card-bg) !important;
+        }
 
-  # S3 Bucket for model files
-  ModelBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub birdtag-models-${StudentName}-${AWS::AccountId}
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-      CorsConfiguration:
-        CorsRules:
-          - AllowedHeaders: ['*']
-            AllowedMethods: [GET, PUT, POST]
-            AllowedOrigins: ['*']
-            MaxAge: 3000
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
 
-  # DynamoDB Table
-  BirdTagMetadataTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub BirdTagMetadata-${StudentName}
-      AttributeDefinitions:
-        - AttributeName: fileKey
-          AttributeType: S
-      KeySchema:
-        - AttributeName: fileKey
-          KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+        .navbar-brand i {
+            color: var(--secondary-color);
+        }
 
-  # Lambda Layers
-  BirdDetectionLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub birdtag-detection-deps-${StudentName}
-      Description: Dependencies for Bird Detection
-      ContentUri: layers/bird_detection/
-      CompatibleRuntimes:
-        - python3.9
+        /* Cards */
+        .card {
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,.1);
+            transition: transform 0.2s;
+            background-color: white;
+        }
 
-  BirdNetAnalyzerLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub birdtag-analyzer-deps-${StudentName}
-      Description: Dependencies for BirdNET Analyzer
-      ContentUri: layers/birdnet_analyzer/
-      CompatibleRuntimes:
-        - python3.11
+        [data-theme="dark"] .card {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
 
-  FFmpegLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub birdtag-ffmpeg-${StudentName}
-      Description: FFmpeg for media processing
-      ContentUri: layers/ffmpeg/
-      CompatibleRuntimes:
-        - python3.9
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,0,0,.15);
+        }
 
-  # Lambda Functions
-  AuthFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-auth-${StudentName}
-      CodeUri: src/handlers/
-      Handler: auth_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          USER_POOL_ID: !Ref UserPool
-          USER_POOL_CLIENT_ID: !Ref UserPoolClient
-      Policies:
-        - Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:AdminInitiateAuth
-                - cognito-idp:AdminCreateUser
-                - cognito-idp:AdminSetUserPassword
-                - cognito-idp:AdminGetUser
-              Resource: !GetAtt UserPool.Arn
+        /* Drop Zone */
+        #dropZone {
+            border: 3px dashed var(--secondary-color);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: rgba(52, 152, 219, 0.05);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
 
-  UploadFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-upload-${StudentName}
-      CodeUri: src/handlers/
-      Handler: upload_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          UPLOAD_PREFIX: uploads/
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
+        #dropZone:hover {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-color: var(--primary-color);
+        }
 
-  ThumbnailFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-thumbnail-${StudentName}
-      CodeUri: src/handlers/
-      Handler: thumbnail_handler.lambda_handler
-      Runtime: python3.9
-      Timeout: 300
-      MemorySize: 512
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          THUMBNAIL_PREFIX: thumbnails/
-          MAX_THUMBNAIL_SIZE: 200
-          THUMBNAIL_QUALITY: 75
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
-      Events:
-        S3Upload:
-          Type: S3
-          Properties:
-            Bucket: !Ref MediaBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: uploads/
-                  - Name: suffix
-                    Value: .jpg
-                  - Name: suffix
-                    Value: .jpeg
-                  - Name: suffix
-                    Value: .png
+        #dropZone.dragover {
+            background-color: rgba(52, 152, 219, 0.2);
+            border-color: var(--success-color);
+            transform: scale(1.02);
+        }
 
-  MediaProcessorFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-media-processor-${StudentName}
-      CodeUri: src/handlers/
-      Handler: media_processor_handler.lambda_handler
-      Runtime: python3.9
-      Timeout: 300
-      MemorySize: 1024
-      Layers:
-        - !Ref FFmpegLayer
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          VIDEO_PREVIEW_PREFIX: previews/
-          AUDIO_WAVEFORM_PREFIX: waveforms/
-          FFMPEG_PATH: /opt/ffmpeg/ffmpeg
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
-      Events:
-        S3Upload:
-          Type: S3
-          Properties:
-            Bucket: !Ref MediaBucket
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: uploads/
-                  - Name: suffix
-                    Value: .mp4
-                  - Name: suffix
-                    Value: .avi
-                  - Name: suffix
-                    Value: .mov
-                  - Name: suffix
-                    Value: .wav
-                  - Name: suffix
-                    Value: .mp3
-                  - Name: suffix
-                    Value: .m4a
+        #dropZone i {
+            font-size: 3rem;
+            color: var(--secondary-color);
+            margin-bottom: 1rem;
+        }
 
-  BirdDetectionFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-detection-${StudentName}
-      CodeUri: src/handlers/
-      Handler: bird_detection_lambda.lambda_handler
-      Runtime: python3.9
-      Layers:
-        - !Ref BirdDetectionLayer
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          MODEL_BUCKET: !Ref ModelBucket
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3ReadPolicy:
-            BucketName: !Ref ModelBucket
+        /* Thumbnails */
+        .thumbnail-container {
+            position: relative;
+            display: inline-block;
+            margin: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
 
-  BirdNetAnalyzerFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-analyzer-${StudentName}
-      CodeUri: src/handlers/
-      Handler: birdnet_analyzer_lambda.lambda_handler
-      Runtime: python3.11
-      Layers:
-        - !Ref BirdNetAnalyzerLayer
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          MODEL_BUCKET: !Ref ModelBucket
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3ReadPolicy:
-            BucketName: !Ref ModelBucket
+        .thumbnail-container:hover {
+            transform: scale(1.05);
+        }
 
-  SearchFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-search-${StudentName}
-      CodeUri: src/handlers/
-      Handler: search_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-          MEDIA_BUCKET: !Ref MediaBucket
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
+        .thumbnail {
+            width: 200px;
+            height: 200px;
+            object-fit: cover;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.15);
+        }
 
-  StatsFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-stats-${StudentName}
-      CodeUri: src/handlers/
-      Handler: stats_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
+        .thumbnail-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+            color: white;
+            padding: 10px;
+            border-radius: 0 0 10px 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
 
-  ModelMonitorFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-model-monitor-${StudentName}
-      CodeUri: src/handlers/
-      Handler: model_monitor_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
+        .thumbnail-container:hover .thumbnail-overlay {
+            opacity: 1;
+        }
 
-  FileClassifierFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-file-classifier-${StudentName}
-      CodeUri: src/handlers/
-      Handler: file_classifier_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - DynamoDBWritePolicy:
-            TableName: !Ref BirdTagMetadataTable
+        /* File Tags */
+        .tag-chip {
+            display: inline-block;
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            margin: 2px;
+            transition: all 0.2s;
+        }
 
-  BatchProcessorFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-batch-processor-${StudentName}
-      CodeUri: src/handlers/
-      Handler: batch_processor_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - DynamoDBWritePolicy:
-            TableName: !Ref BirdTagMetadataTable
+        .tag-chip:hover {
+            background-color: var(--primary-color);
+            transform: scale(1.05);
+        }
 
-  TagFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub birdtag-tag-${StudentName}
-      CodeUri: src/handlers/
-      Handler: tag_handler.lambda_handler
-      Runtime: python3.9
-      Environment:
-        Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - DynamoDBWritePolicy:
-            TableName: !Ref BirdTagMetadataTable
+        /* Progress Bar */
+        .upload-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background-color: rgba(0,0,0,0.1);
+            z-index: 9999;
+            display: none;
+        }
 
-  # API Gateway
-  Api:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: Prod
-      Cors:
-        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'*'"
-      Auth:
-        DefaultAuthorizer: CognitoAuthorizer
-        Authorizers:
-          CognitoAuthorizer:
-            UserPoolArn: !GetAtt UserPool.Arn
+        .upload-progress-bar {
+            height: 100%;
+            background-color: var(--success-color);
+            transition: width 0.3s ease;
+            width: 0%;
+        }
 
-  # API Gateway Authorizer
-  CognitoAuthorizer:
-    Type: AWS::ApiGateway::Authorizer
-    Properties:
-      Name: !Sub birdtag-authorizer-${StudentName}
-      Type: COGNITO_USER_POOLS
-      IdentitySource: method.request.header.Authorization
-      RestApiId: !Ref Api
-      ProviderARNs:
-        - !GetAtt UserPool.Arn
+        /* Notifications */
+        .notification-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            min-width: 300px;
+            z-index: 9999;
+        }
 
-  # Lambda Permissions for S3 Events
-  ThumbnailFunctionS3Permission:
-    Type: AWS::Lambda::Permission
-    DependsOn: 
-      - MediaBucket
-      - ThumbnailFunction
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref ThumbnailFunction
-      Principal: s3.amazonaws.com
-      SourceAccount: !Ref AWS::AccountId
-      SourceArn: !GetAtt MediaBucket.Arn
+        /* File List */
+        .file-item {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
 
-  MediaProcessorFunctionS3Permission:
-    Type: AWS::Lambda::Permission
-    DependsOn:
-      - MediaBucket
-      - MediaProcessorFunction
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref MediaProcessorFunction
-      Principal: s3.amazonaws.com
-      SourceAccount: !Ref AWS::AccountId
-      SourceArn: !GetAtt MediaBucket.Arn
+        .file-item:hover {
+            background-color: rgba(52, 152, 219, 0.05);
+            border-color: var(--secondary-color);
+        }
 
-Outputs:
-  UserPoolId:
-    Description: Cognito User Pool ID
-    Value: !Ref UserPool
+        /* Search Tags */
+        .search-tag {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 25px;
+            display: inline-flex;
+            align-items: center;
+            margin: 5px;
+        }
 
-  UserPoolClientId:
-    Description: Cognito User Pool Client ID
-    Value: !Ref UserPoolClient
+        .search-tag button {
+            background: none;
+            border: none;
+            color: white;
+            margin-left: 8px;
+            cursor: pointer;
+        }
 
-  MediaBucketName:
-    Description: S3 Bucket for media files
-    Value: !Ref MediaBucket
+        /* Loading Spinner */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            display: none;
+        }
 
-  ModelBucketName:
-    Description: S3 Bucket for model files
-    Value: !Ref ModelBucket
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .thumbnail {
+                width: 150px;
+                height: 150px;
+            }
+            
+            #dropZone {
+                padding: 20px;
+            }
+        }
 
-  ApiEndpoint:
-    Description: API Gateway endpoint URL
-    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+        /* Theme Toggle */
+        .theme-toggle {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        /* Modal Customization */
+        [data-theme="dark"] .modal-content {
+            background-color: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        /* Form Controls in Dark Mode */
+        [data-theme="dark"] .form-control,
+        [data-theme="dark"] .form-select {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            border-color: #495057;
+        }
+
+        [data-theme="dark"] .form-control:focus,
+        [data-theme="dark"] .form-select:focus {
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            border-color: var(--secondary-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- Upload Progress Bar -->
+    <div class="upload-progress">
+        <div class="upload-progress-bar"></div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay">
+        <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#" onclick="showPage('dashboard')">
+                <i class="bi bi-camera-fill"></i> BirdTag
+            </a>
+            <div class="d-flex align-items-center">
+                <a class="nav-link text-light me-3" href="#" onclick="showPage('dashboard')">
+                    <i class="bi bi-house-door"></i> Home
+                </a>
+                <div class="dropdown">
+                    <button class="btn btn-link nav-link dropdown-toggle text-light" type="button" id="moreOptionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="moreOptionsDropdown">
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('upload')">
+                                <i class="bi bi-cloud-upload"></i> Upload
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('search')">
+                                <i class="bi bi-search"></i> Search
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('myfiles')">
+                                <i class="bi bi-folder"></i> My Files/Tags
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showPage('notifications')">
+                                <i class="bi bi-bell"></i> Notifications
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showProfile()">
+                                <i class="bi bi-person"></i> Profile (<span id="userEmail">Profile</span>)
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="signOut()">
+                                <i class="bi bi-box-arrow-right"></i> Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="container-fluid mt-4">
+        <!-- Dashboard Page -->
+        <div id="dashboardPage" class="page">
+            <div class="row">
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-images" style="font-size: 2rem; color: var(--secondary-color);"></i>
+                            <h3 class="mt-3" id="totalFiles">0</h3>
+                            <p class="text-muted">Total Files</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-tags" style="font-size: 2rem; color: var(--success-color);"></i>
+                            <h3 class="mt-3" id="totalTags">0</h3>
+                            <p class="text-muted">Unique Tags</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-clock-history" style="font-size: 2rem; color: var(--warning-color);"></i>
+                            <h3 class="mt-3" id="recentUploads">0</h3>
+                            <p class="text-muted">Recent Uploads</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="bi bi-bell" style="font-size: 2rem; color: var(--danger-color);"></i>
+                            <h3 class="mt-3" id="activeNotifications">0</h3>
+                            <p class="text-muted">Active Notifications</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Recent Activity</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="recentActivity" class="list-group">
+                                <p class="text-muted">No recent activity</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Page -->
+        <div id="uploadPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-cloud-upload"></i> Upload Media Files</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="dropZone">
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <p class="mt-3 mb-1">Drag and drop files here or click to browse</p>
+                                <small class="text-muted">Supported formats: JPG, PNG, MP4, MP3, WAV</small>
+                                <input type="file" id="fileInput" multiple accept="image/*,video/*,audio/*" style="display: none;">
+                            </div>
+                            
+                            <div id="uploadQueue" class="mt-4" style="display: none;">
+                                <h6>Upload Queue</h6>
+                                <div id="uploadList"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Page -->
+        <div id="searchPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-search"></i> Search Options</h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Tab Navigation for Different Search Types -->
+                            <ul class="nav nav-tabs mb-3" id="searchTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tagsSearch" type="button">
+                                        <i class="bi bi-tags"></i> Tags
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="species-tab" data-bs-toggle="tab" data-bs-target="#speciesSearch" type="button">
+                                        <i class="bi bi-search"></i> Species
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="thumbnail-tab" data-bs-toggle="tab" data-bs-target="#thumbnailSearch" type="button">
+                                        <i class="bi bi-image"></i> Thumbnail
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="file-tab" data-bs-toggle="tab" data-bs-target="#fileSearch" type="button">
+                                        <i class="bi bi-file-earmark"></i> File
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content">
+                                <!-- Tag-Based Search with Counts -->
+                                <div class="tab-pane fade show active" id="tagsSearch" role="tabpanel">
+                                    <h6>Search by Tags with Minimum Counts</h6>
+                                    <small class="text-muted mb-2">Find files with specific bird counts (AND operation)</small>
+                                    <div class="input-group mb-2 mt-2">
+                                        <select class="form-select" id="speciesSelect">
+                                            <option value="">Select species...</option>
+                                            <option value="crow">Crow</option>
+                                            <option value="pigeon">Pigeon</option>
+                                            <option value="sparrow">Sparrow</option>
+                                            <option value="eagle">Eagle</option>
+                                            <option value="parrot">Parrot</option>
+                                            <option value="owl">Owl</option>
+                                            <option value="peacock">Peacock</option>
+                                            <option value="kingfisher">Kingfisher</option>
+                                            <option value="myna">Myna</option>
+                                        </select>
+                                        <input type="number" class="form-control" id="countInput" placeholder="Min count" min="1" value="1">
+                                        <button class="btn btn-outline-secondary" onclick="addSearchTag()">
+                                            <i class="bi bi-plus"></i> Add
+                                        </button>
+                                    </div>
+                                    <div id="searchTags" class="mb-2"></div>
+                                    <button class="btn btn-primary w-100" onclick="searchByTags()">
+                                        <i class="bi bi-search"></i> Search with Counts
+                                    </button>
+                                </div>
+
+                                <!-- Species-Only Search -->
+                                <div class="tab-pane fade" id="speciesSearch" role="tabpanel">
+                                    <h6>Search by Species Only</h6>
+                                    <small class="text-muted mb-2">Find all files containing at least one of selected species</small>
+                                    <div class="mb-3 mt-2">
+                                        <select class="form-select" id="speciesOnlySelect">
+                                            <option value="">Select species...</option>
+                                            <option value="crow">Crow</option>
+                                            <option value="pigeon">Pigeon</option>
+                                            <option value="sparrow">Sparrow</option>
+                                            <option value="eagle">Eagle</option>
+                                            <option value="parrot">Parrot</option>
+                                            <option value="owl">Owl</option>
+                                            <option value="peacock">Peacock</option>
+                                            <option value="kingfisher">Kingfisher</option>
+                                            <option value="myna">Myna</option>
+                                        </select>
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="searchBySpeciesOnly()">
+                                        <i class="bi bi-search"></i> Find All Files
+                                    </button>
+                                </div>
+
+                                <!-- Thumbnail URL Search -->
+                                <div class="tab-pane fade" id="thumbnailSearch" role="tabpanel">
+                                    <h6>Find Original from Thumbnail</h6>
+                                    <small class="text-muted mb-2">Get full-size image from thumbnail URL</small>
+                                    <div class="mb-3 mt-2">
+                                        <input type="text" class="form-control" id="thumbnailUrl" 
+                                               placeholder="Paste thumbnail S3 URL here">
+                                        <small class="text-muted">Example: https://bucket.s3.amazonaws.com/thumbnails/...</small>
+                                    </div>
+                                    <button class="btn btn-secondary w-100" onclick="resolveToOriginal()">
+                                        <i class="bi bi-arrows-fullscreen"></i> Get Full Size Image
+                                    </button>
+                                </div>
+
+                                <!-- Search by File -->
+                                <div class="tab-pane fade" id="fileSearch" role="tabpanel">
+                                    <h6>Search by File Content</h6>
+                                    <small class="text-muted mb-2">Upload a file to find similar tagged files</small>
+                                    <div class="mb-3 mt-2">
+                                        <input type="file" class="form-control" id="searchFileInput" 
+                                               accept="image/*,video/*,audio/*">
+                                        <small class="text-muted">File will be analyzed but not stored</small>
+                                    </div>
+                                    <button class="btn btn-secondary w-100" onclick="searchByFile()">
+                                        <i class="bi bi-file-earmark-search"></i> Find Similar Files
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tag Management for Bulk Operations -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-tags-fill"></i> Bulk Tag Management</h5>
+                        </div>
+                        <div class="card-body">
+                            <small class="text-muted">Select files from results to manage tags</small>
+                            <div id="selectedFilesInfo" class="mt-2 mb-2">
+                                <span class="badge bg-secondary">0 files selected</span>
+                            </div>
+                            <div class="input-group mb-2">
+                                <select class="form-select" id="bulkTagSpecies">
+                                    <option value="">Select species...</option>
+                                    <option value="crow">Crow</option>
+                                    <option value="pigeon">Pigeon</option>
+                                    <option value="sparrow">Sparrow</option>
+                                    <option value="eagle">Eagle</option>
+                                    <option value="parrot">Parrot</option>
+                                </select>
+                                <input type="number" class="form-control" id="bulkTagCount" placeholder="Count" min="1" value="1">
+                            </div>
+                            <div class="btn-group w-100">
+                                <button class="btn btn-success" onclick="bulkAddTags()">
+                                    <i class="bi bi-plus-circle"></i> Add Tags
+                                </button>
+                                <button class="btn btn-danger" onclick="bulkRemoveTags()">
+                                    <i class="bi bi-dash-circle"></i> Remove Tags
+                                </button>
+                            </div>
+                            <button class="btn btn-outline-danger w-100 mt-2" onclick="bulkDeleteFiles()">
+                                <i class="bi bi-trash"></i> Delete Selected Files
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Search Results</h5>
+                            <div>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="selectAllResults()">
+                                    <i class="bi bi-check2-square"></i> Select All
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="deselectAllResults()">
+                                    <i class="bi bi-square"></i> Deselect All
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="searchResultsInfo" class="mb-2"></div>
+                            <div id="searchResults" class="d-flex flex-wrap justify-content-center">
+                                <p class="text-muted w-100 text-center">No search performed yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- My Files Page -->
+        <div id="myfilesPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="bi bi-folder"></i> My Files</h5>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary" onclick="refreshMyFiles()">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteSelectedFiles()">
+                                    <i class="bi bi-trash"></i> Delete Selected
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="myFilesList">
+                                <p class="text-muted text-center">Loading your files...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notifications Page -->
+        <div id="notificationsPage" class="page" style="display: none;">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-bell"></i> Notification Settings</h5>
+                        </div>
+                        <div class="card-body">
+                            <p>Subscribe to email notifications when new files with specific bird species are uploaded.</p>
+                            
+                            <form id="subscriptionForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" id="notificationEmail" required>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label class="form-label">Select Bird Species</label>
+                                    <select class="form-select" id="notificationSpecies" required>
+                                        <option value="">Choose species...</option>
+                                        <option value="crow">Crow</option>
+                                        <option value="pigeon">Pigeon</option>
+                                        <option value="sparrow">Sparrow</option>
+                                        <option value="eagle">Eagle</option>
+                                        <option value="parrot">Parrot</option>
+                                        <option value="owl">Owl</option>
+                                        <option value="peacock">Peacock</option>
+                                        <option value="kingfisher">Kingfisher</option>
+                                        <option value="myna">Myna</option>
+                                    </select>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-bell-fill"></i> Subscribe
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Active Subscriptions</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="subscriptionsList">
+                                <p class="text-muted">No active subscriptions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Welcome to BirdTag</h5>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs" id="authTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#login" type="button">Login</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="signup-tab" data-bs-toggle="tab" data-bs-target="#signup" type="button">Sign Up</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content mt-3">
+                        <!-- Login Tab -->
+                        <div class="tab-pane fade show active" id="login" role="tabpanel">
+                            <form id="loginForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="loginEmail" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="loginPassword" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">Login</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Sign Up Tab -->
+                        <div class="tab-pane fade" id="signup" role="tabpanel">
+                            <form id="signupForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="signupEmail" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">First Name</label>
+                                    <input type="text" class="form-control" id="signupFirstName" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Last Name</label>
+                                    <input type="text" class="form-control" id="signupLastName" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="signupPassword" required>
+                                    <small class="text-muted">Min 8 characters, uppercase, lowercase, and numbers</small>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">Sign Up</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div class="modal fade" id="imageModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Image Preview</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body text-center">
+                    <img id="fullImage" class="img-fluid" src="">
+                    <div id="imageMetadata" class="mt-3 text-start"></div>
+                </div>
+                <div class="modal-footer">
+                    <a id="downloadLink" href="#" class="btn btn-primary" download>
+                        <i class="bi bi-download"></i> Download
+                    </a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Management Modal -->
+    <div class="modal fade" id="tagModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Manage Tags</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="currentTags" class="mb-3"></div>
+                    <hr>
+                    <h6>Add/Remove Tags</h6>
+                    <div class="input-group mb-2">
+                        <select class="form-select" id="tagSpecies">
+                            <option value="">Select species...</option>
+                            <option value="crow">Crow</option>
+                            <option value="pigeon">Pigeon</option>
+                            <option value="sparrow">Sparrow</option>
+                            <option value="eagle">Eagle</option>
+                            <option value="parrot">Parrot</option>
+                        </select>
+                        <input type="number" class="form-control" id="tagCount" placeholder="Count" min="1" value="1">
+                    </div>
+                    <div class="btn-group w-100">
+                        <button class="btn btn-success" onclick="modifyTags(1)">
+                            <i class="bi bi-plus-circle"></i> Add Tag
+                        </button>
+                        <button class="btn btn-danger" onclick="modifyTags(0)">
+                            <i class="bi bi-dash-circle"></i> Remove Tag
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="notification-toast"></div>
+
+    <!-- Theme Toggle Button -->
+    <button class="theme-toggle" onclick="toggleTheme()">
+        <i class="bi bi-moon-fill" id="themeIcon"></i>
+    </button>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
+    
+    <!-- Load JavaScript Modules -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/theme.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/upload.js"></script>
+    <script src="js/search.js"></script>
+    <script src="js/bulk-operations.js"></script>
+    <script src="js/file-manager.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/notifications.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
