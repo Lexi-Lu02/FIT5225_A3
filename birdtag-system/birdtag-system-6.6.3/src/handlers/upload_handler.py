@@ -2,13 +2,14 @@ import json
 import os
 import uuid
 import logging
+import base64
 from urllib.parse import unquote_plus
 from typing import Dict, Any, Tuple
 
 from utils.s3_utils import (
     validate_file_extension,
     get_content_type,
-    generate_presigned_url
+    upload_file_to_s3
 )
 from utils.error_utils import (
     BirdTagError,
@@ -61,15 +62,13 @@ def generate_file_key(original_filename: str, upload_prefix: str) -> Tuple[str, 
     
     return file_key, file_id
 
-def create_success_response(upload_url: str, file_key: str, file_id: str, expires_in: int = 3600) -> Dict[str, Any]:
+def create_success_response(file_key: str, file_id: str) -> Dict[str, Any]:
     """
     Create a successful response with proper format
     
     Args:
-        upload_url (str): The presigned URL
         file_key (str): The S3 file key
         file_id (str): The unique file ID
-        expires_in (int): URL expiration time
     
     Returns:
         dict: Lambda response
@@ -78,33 +77,158 @@ def create_success_response(upload_url: str, file_key: str, file_id: str, expire
         'statusCode': 200,
         'headers': get_cors_headers(),
         'body': json.dumps({
-            'uploadUrl': upload_url,
             'fileKey': file_key,
             'fileId': file_id,
-            'expiresIn': expires_in,
-            'message': 'Upload URL generated successfully'
+            'message': 'File uploaded successfully'
         })
     }
 
-def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def parse_multipart_form_data(event: Dict[str, Any]) -> Tuple[bytes, str]:
     """
-    Lambda handler for generating S3 presigned URLs for file uploads
+    Parse multipart form data from the event
     
     Args:
-        event (dict): API Gateway event containing query parameters
+        event (dict): API Gateway event
+    
+    Returns:
+        tuple: (file_data, filename)
+    """
+    logger.info("Starting to parse multipart form data")
+    logger.info(f"Event keys: {list(event.keys())}")
+    
+    if 'body' not in event:
+        logger.error("No body found in event")
+        raise BirdTagError(
+            message="No file data provided",
+            error_code=ErrorCode.INVALID_REQUEST,
+            status_code=400
+        )
+    
+    # Get content type
+    content_type = event.get('headers', {}).get('Content-Type', '')
+    logger.info(f"Content-Type: {content_type}")
+    
+    if 'multipart/form-data' not in content_type:
+        logger.error(f"Invalid Content-Type: {content_type}")
+        raise BirdTagError(
+            message="Content-Type must be multipart/form-data",
+            error_code=ErrorCode.INVALID_REQUEST,
+            status_code=400
+        )
+    
+    # Get raw body data
+    body = event['body']
+    logger.info(f"Body type: {type(body)}")
+    
+    # Decode base64 body
+    try:
+        logger.info("Decoding base64 body")
+        body = base64.b64decode(body)
+        logger.info("Successfully decoded base64 body")
+    except Exception as e:
+        logger.error(f"Failed to decode base64 body: {str(e)}")
+        raise BirdTagError(
+            message="Invalid request body format",
+            error_code=ErrorCode.INVALID_REQUEST,
+            status_code=400
+        )
+    
+    # Get filename from query parameters
+    query_params = event.get('queryStringParameters', {})
+    logger.info(f"Query parameters: {query_params}")
+    
+    filename = query_params.get('filename')
+    if not filename:
+        logger.error("No filename provided in query parameters")
+        raise BirdTagError(
+            message="Filename is required",
+            error_code=ErrorCode.INVALID_REQUEST,
+            status_code=400
+        )
+    
+    # Extract file data from multipart form data
+    try:
+        # Find the boundary
+        boundary = None
+        for part in content_type.split(';'):
+            if 'boundary=' in part:
+                boundary = part.split('=')[1].strip()
+                break
+        
+        if not boundary:
+            raise BirdTagError(
+                message="No boundary found in Content-Type",
+                error_code=ErrorCode.INVALID_REQUEST,
+                status_code=400
+            )
+        
+        # Split the body by boundary
+        boundary_bytes = f'--{boundary}'.encode()
+        parts = body.split(boundary_bytes)
+        
+        # Find the file part
+        for part in parts:
+            if not part.strip():
+                continue
+            
+            # Look for filename in headers
+            headers_end = part.find(b'\r\n\r\n')
+            if headers_end == -1:
+                continue
+            
+            headers = part[:headers_end].decode('utf-8', errors='ignore')
+            if 'filename=' not in headers:
+                continue
+            
+            # Extract file data
+            data_start = headers_end + 4
+            data_end = part.rfind(b'\r\n')
+            if data_end == -1:
+                data_end = len(part)
+            
+            file_data = part[data_start:data_end]
+            logger.info(f"Successfully extracted file data, size: {len(file_data)} bytes")
+            
+            return file_data, filename
+        
+        raise BirdTagError(
+            message="No file found in request",
+            error_code=ErrorCode.INVALID_REQUEST,
+            status_code=400
+        )
+        
+    except Exception as e:
+        logger.error(f"Error parsing multipart form data: {str(e)}")
+        raise BirdTagError(
+            message="Failed to parse file data",
+            error_code=ErrorCode.INVALID_REQUEST,
+            status_code=400
+        )
+
+def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Lambda handler for file uploads
+    
+    Args:
+        event (dict): API Gateway event containing file data
         context (object): Lambda context object
     
     Returns:
-        dict: HTTP response with presigned URL or error
+        dict: HTTP response with upload result or error
     """
-    logger.info(f"Received event: {json.dumps(event)}")
+    logger.info("Starting upload handler")
+    logger.info(f"Event: {json.dumps(event)}")
     
     try:
         # Get environment variables
         bucket_name = os.environ.get('MEDIA_BUCKET')
         upload_prefix = os.environ.get('UPLOAD_PREFIX', 'uploads/')
         
+        logger.info(f"Bucket name: {bucket_name}")
+        logger.info(f"Upload prefix: {upload_prefix}")
+        
         if not bucket_name:
+            logger.error("MEDIA_BUCKET environment variable not set")
             raise BirdTagError(
                 message="Server configuration error",
                 error_code=ErrorCode.UNKNOWN_ERROR,
@@ -115,18 +239,14 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not upload_prefix.endswith('/'):
             upload_prefix += '/'
         
-        # Extract query parameters from the event
-        query_params = event.get('queryStringParameters') or {}
-        
-        # Validate required parameters
-        validate_required_fields(query_params, ['filename'])
-        
-        # Get and decode filename
-        filename = unquote_plus(query_params['filename'])
+        # Parse multipart form data
+        file_data, filename = parse_multipart_form_data(event)
+        logger.info(f"File data size: {len(file_data)} bytes")
         
         # Validate file extension
         if not validate_file_extension(filename, ALLOWED_EXTENSIONS):
             allowed_exts = ', '.join(sorted(ALLOWED_EXTENSIONS))
+            logger.error(f"Invalid file extension: {filename}")
             raise BirdTagError(
                 message=f"Invalid file type. Allowed extensions: {allowed_exts}",
                 error_code=ErrorCode.INVALID_FILE_TYPE,
@@ -135,25 +255,21 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Generate unique file key and ID
         file_key, file_id = generate_file_key(filename, upload_prefix)
+        logger.info(f"Generated file key: {file_key}")
+        logger.info(f"Generated file ID: {file_id}")
         
-        # Set expiration time (default 1 hour)
-        expires_in = int(query_params.get('expires_in', 3600))
-        if expires_in > 3600:  # Max 1 hour for security
-            expires_in = 3600
-        
-        # Generate presigned URL
-        upload_url = generate_presigned_url(
+        # Upload file to S3
+        logger.info("Attempting to upload file to S3")
+        upload_file_to_s3(
             bucket_name,
             file_key,
-            filename,
-            get_content_type(filename),
-            expires_in
+            file_data,
+            get_content_type(filename)
         )
-        
-        logger.info(f"Generated presigned URL for file: {filename}, key: {file_key}")
+        logger.info("Successfully uploaded file to S3")
         
         # Return success response
-        return create_success_response(upload_url, file_key, file_id, expires_in)
+        return create_success_response(file_key, file_id)
     
     except BirdTagError as e:
         logger.error(f"BirdTag Error: {str(e)}")
