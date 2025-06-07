@@ -16,6 +16,7 @@ logger.setLevel(logging.INFO)
 
 # Environment variables
 API_VERSION = os.environ.get('API_VERSION', 'v1')
+IS_LOCAL = os.environ.get('IS_LOCAL', 'false').lower() == 'true'
 
 cognito = boto3.client('cognito-idp')
 
@@ -141,8 +142,24 @@ def handle_login(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not email or not password:
             return {
                 'statusCode': 400,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'error': 'Email and password are required'
+                })
+            }
+
+        if IS_LOCAL:
+            # Local test mode - accept any credentials
+            return {
+                'statusCode': 200,
+                'headers': get_cors_headers(),
+                'body': json.dumps({
+                    'message': 'Login successful (local mode)',
+                    'tokens': {
+                        'accessToken': 'local-test-token',
+                        'idToken': 'local-test-id-token',
+                        'refreshToken': 'local-test-refresh-token'
+                    }
                 })
             }
 
@@ -158,6 +175,7 @@ def handle_login(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             return {
                 'statusCode': 200,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'message': 'Login successful',
                     'tokens': {
@@ -172,6 +190,7 @@ def handle_login(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if error_code == 'NotAuthorizedException':
                 return {
                     'statusCode': 401,
+                    'headers': get_cors_headers(),
                     'body': json.dumps({
                         'error': 'Invalid email or password'
                     })
@@ -179,6 +198,7 @@ def handle_login(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             elif error_code == 'UserNotConfirmedException':
                 return {
                     'statusCode': 401,
+                    'headers': get_cors_headers(),
                     'body': json.dumps({
                         'error': 'Please verify your email first'
                     })
@@ -190,6 +210,7 @@ def handle_login(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         print(f"Error in login: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'error': 'Internal server error'
             })
@@ -213,12 +234,28 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         body = json.loads(event['body'])
         email = body.get('email')
         password = body.get('password')
+        name = body.get('name')
 
         if not email or not password:
             return {
                 'statusCode': 400,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'error': 'Email and password are required'
+                })
+            }
+
+        if IS_LOCAL:
+            # Local test mode - accept any registration
+            return {
+                'statusCode': 200,
+                'headers': get_cors_headers(),
+                'body': json.dumps({
+                    'message': 'Registration successful (local mode)',
+                    'user': {
+                        'email': email,
+                        'name': name
+                    }
                 })
             }
 
@@ -231,12 +268,17 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     {
                         'Name': 'email',
                         'Value': email
+                    },
+                    {
+                        'Name': 'name',
+                        'Value': name or ''
                     }
                 ]
             )
             
             return {
                 'statusCode': 200,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'message': 'Registration successful. Please check your email for verification code.'
                 })
@@ -246,6 +288,7 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if error_code == 'UsernameExistsException':
                 return {
                     'statusCode': 400,
+                    'headers': get_cors_headers(),
                     'body': json.dumps({
                         'error': 'Email already exists'
                     })
@@ -257,6 +300,7 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         print(f"Error in registration: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'error': 'Internal server error'
             })
@@ -264,7 +308,7 @@ def handle_register(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
 def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
-    Handle token verification request.
+    Handle email verification request.
     
     Args:
         event (Dict[str, Any]): API Gateway event
@@ -284,13 +328,24 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         if not email or not code:
             return {
                 'statusCode': 400,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'error': 'Email and verification code are required'
                 })
             }
 
+        if IS_LOCAL:
+            # Local test mode - accept any verification code
+            return {
+                'statusCode': 200,
+                'headers': get_cors_headers(),
+                'body': json.dumps({
+                    'message': 'Email verified successfully (local mode)'
+                })
+            }
+
         try:
-            cognito.confirm_sign_up(
+            response = cognito.confirm_sign_up(
                 ClientId=os.environ['COGNITO_CLIENT_ID'],
                 Username=email,
                 ConfirmationCode=code
@@ -298,6 +353,7 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             
             return {
                 'statusCode': 200,
+                'headers': get_cors_headers(),
                 'body': json.dumps({
                     'message': 'Email verified successfully'
                 })
@@ -307,8 +363,17 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             if error_code == 'CodeMismatchException':
                 return {
                     'statusCode': 400,
+                    'headers': get_cors_headers(),
                     'body': json.dumps({
                         'error': 'Invalid verification code'
+                    })
+                }
+            elif error_code == 'ExpiredCodeException':
+                return {
+                    'statusCode': 400,
+                    'headers': get_cors_headers(),
+                    'body': json.dumps({
+                        'error': 'Verification code has expired'
                     })
                 }
             else:
@@ -318,6 +383,7 @@ def handle_verify(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         print(f"Error in verification: {str(e)}")
         return {
             'statusCode': 500,
+            'headers': get_cors_headers(),
             'body': json.dumps({
                 'error': 'Internal server error'
             })
