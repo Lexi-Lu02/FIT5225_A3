@@ -9,8 +9,9 @@ Pillow==10.2.0
 
 # Bird detection model
 ultralytics==8.1.28
-torch==2.2.1
-torchvision==0.17.1
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.1+cpu
+torchvision==0.17.1+cpu
 supervision==0.18.0
 
 # Audio processing
@@ -21,14 +22,11 @@ resampy==0.4.2
 scikit-learn==1.6.1
 tqdm==4.66.1
 
+# Authentication
+bcrypt==4.0.1
+PyJWT==2.8.0
+python-jose==3.3.0
+
 # Utilities
 requests==2.31.0
-urllib3==2.1.0
 python-multipart==0.0.9
-
-# Development tools
-pytest==8.0.2
-pytest-cov==4.1.0
-black==24.2.0
-flake8==7.0.0
-moto==5.0.1
