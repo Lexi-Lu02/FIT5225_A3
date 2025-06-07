@@ -125,8 +125,8 @@ Resources:
   BirdDetectionLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: !Sub birdtag-detection-deps-${StudentName}
-      Description: Dependencies for Bird Detection
+      LayerName: !Sub birdtag-detection-layer-${StudentName}
+      Description: Bird detection model and dependencies
       ContentUri: layers/bird_detection/
       CompatibleRuntimes:
         - python3.9
@@ -134,8 +134,8 @@ Resources:
   BirdNetAnalyzerLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: !Sub birdtag-analyzer-deps-${StudentName}
-      Description: Dependencies for BirdNET Analyzer
+      LayerName: !Sub birdtag-analyzer-layer-${StudentName}
+      Description: BirdNET analyzer model and dependencies
       ContentUri: layers/birdnet_analyzer/
       CompatibleRuntimes:
         - python3.11
@@ -143,8 +143,8 @@ Resources:
   FFmpegLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: !Sub birdtag-ffmpeg-${StudentName}
-      Description: FFmpeg for media processing
+      LayerName: !Sub birdtag-ffmpeg-layer-${StudentName}
+      Description: FFmpeg binary for media processing
       ContentUri: layers/ffmpeg/
       CompatibleRuntimes:
         - python3.9
@@ -154,8 +154,8 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-auth-${StudentName}
-      CodeUri: src/handlers/
-      Handler: auth_handler.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/auth_handler.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
@@ -164,6 +164,7 @@ Resources:
           COGNITO_CLIENT_ID: !Ref UserPoolClient
           IS_LOCAL: "true"
           JWT_SECRET: "local-test-secret"
+          PYTHONPATH: "/var/task"
       Policies:
         - Statement:
             - Effect: Allow
@@ -177,89 +178,88 @@ Resources:
         Register:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /auth/register
             Method: post
         Login:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /auth/login
             Method: post
         Verify:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /auth/verify
             Method: post
 
   UploadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub birdtag-upload-${StudentName}
-      CodeUri: src/handlers/
-      Handler: upload_handler.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/upload_handler.lambda_handler
       Runtime: python3.9
+      Timeout: 30
+      MemorySize: 256
       Environment:
         Variables:
           MEDIA_BUCKET: !Ref MediaBucket
           UPLOAD_PREFIX: uploads/
       Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
+        - S3CrudPolicy:
             BucketName: !Ref MediaBucket
       Events:
         Upload:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /upload
             Method: post
+            BinaryMediaTypes:
+              - '*/*'
+            RequestParameters:
+              - method.request.header.Content-Type: true
+            RequestTemplates:
+              '*/*': |
+                {
+                  "body": $util.base64Encode($input.body),
+                  "headers": {
+                    #foreach($header in $input.params().header.keySet())
+                    "$header": "$util.escapeJavaScript($input.params().header.get($header))" #if($foreach.hasNext),#end
+                    #end
+                  },
+                  "queryStringParameters": {
+                    #foreach($param in $input.params().querystring.keySet())
+                    "$param": "$util.escapeJavaScript($input.params().querystring.get($param))" #if($foreach.hasNext),#end
+                    #end
+                  }
+                }
 
   ThumbnailFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-thumbnail-${StudentName}
-      CodeUri: src/handlers/
-      Handler: thumbnail_handler.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/thumbnail_handler.lambda_handler
       Runtime: python3.9
-      Timeout: 300
-      MemorySize: 512
       Environment:
         Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          THUMBNAIL_PREFIX: thumbnails/
-          MAX_THUMBNAIL_SIZE: 200
-          THUMBNAIL_QUALITY: 75
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
+          BUCKET_NAME: !Ref MediaBucket
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
 
   MediaProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub birdtag-media-processor-${StudentName}
-      CodeUri: src/handlers/
-      Handler: media_processor_handler.lambda_handler
+      FunctionName: !Sub birdtag-processor-${StudentName}
+      CodeUri: ./
+      Handler: src/handlers/media_processor.lambda_handler
       Runtime: python3.9
-      Timeout: 300
-      MemorySize: 1024
-      Layers:
-        - !Ref FFmpegLayer
       Environment:
         Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          VIDEO_PREVIEW_PREFIX: previews/
-          AUDIO_WAVEFORM_PREFIX: waveforms/
-          FFMPEG_PATH: /opt/ffmpeg/ffmpeg
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
+          BUCKET_NAME: !Ref MediaBucket
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
+      Layers:
+        - !Ref FFmpegLayer
+        - !Ref BirdNETAnalyzerLayer
 
   # S3 Event Notifications
   ThumbnailFunctionS3Permission:
@@ -334,15 +334,16 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-detection-${StudentName}
-      CodeUri: src/handlers/
-      Handler: bird_detection_lambda.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/bird_detection_handler.lambda_handler
       Runtime: python3.9
-      Layers:
-        - !Ref BirdDetectionLayer
       Environment:
         Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          MODEL_BUCKET: !Ref ModelBucket
+          BUCKET_NAME: !Ref MediaBucket
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
+      Layers:
+        - !Ref BirdDetectionLayer
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref MediaBucket
@@ -372,18 +373,14 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-search-${StudentName}
-      CodeUri: src/handlers/
-      Handler: search_handler.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/search_handler.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-          MEDIA_BUCKET: !Ref MediaBucket
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
+          TABLE_NAME: !Ref BirdTagMetadataTable
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
       Events:
         Search:
           Type: Api
@@ -396,15 +393,14 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-stats-${StudentName}
-      CodeUri: src/handlers/
-      Handler: stats_handler.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/stats_handler.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
+          TABLE_NAME: !Ref BirdTagMetadataTable
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
       Events:
         Stats:
           Type: Api
@@ -416,74 +412,54 @@ Resources:
   ModelMonitorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub birdtag-model-monitor-${StudentName}
-      CodeUri: src/handlers/
-      Handler: model_monitor_handler.lambda_handler
+      FunctionName: !Sub birdtag-monitor-${StudentName}
+      CodeUri: ./
+      Handler: src/handlers/model_monitor.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
+          TABLE_NAME: !Ref BirdTagMetadataTable
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
 
   FileClassifierFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub birdtag-file-classifier-${StudentName}
-      CodeUri: src/handlers/
-      Handler: file_classifier_handler.lambda_handler
+      FunctionName: !Sub birdtag-classifier-${StudentName}
+      CodeUri: ./
+      Handler: src/handlers/file_classifier.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - DynamoDBWritePolicy:
-            TableName: !Ref BirdTagMetadataTable
+          BUCKET_NAME: !Ref MediaBucket
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
 
   BatchProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub birdtag-batch-processor-${StudentName}
-      CodeUri: src/handlers/
-      Handler: batch_processor_handler.lambda_handler
+      FunctionName: !Sub birdtag-batch-${StudentName}
+      CodeUri: ./
+      Handler: src/handlers/batch_processor.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
-          MEDIA_BUCKET: !Ref MediaBucket
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - S3ReadPolicy:
-            BucketName: !Ref MediaBucket
-        - S3WritePolicy:
-            BucketName: !Ref MediaBucket
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - DynamoDBWritePolicy:
-            TableName: !Ref BirdTagMetadataTable
+          BUCKET_NAME: !Ref MediaBucket
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
 
   TagFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-tag-${StudentName}
-      CodeUri: src/handlers/
-      Handler: tag_handler.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/tag_handler.lambda_handler
       Runtime: python3.9
       Environment:
         Variables:
-          DYNAMODB_TABLE: !Ref BirdTagMetadataTable
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref BirdTagMetadataTable
-        - DynamoDBWritePolicy:
-            TableName: !Ref BirdTagMetadataTable
+          TABLE_NAME: !Ref BirdTagMetadataTable
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
       Events:
         Tag:
           Type: Api
@@ -496,10 +472,10 @@ Resources:
   Api:
     Type: AWS::Serverless::Api
     Properties:
-      StageName: Prod
+      StageName: prod
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
-        AllowHeaders: "'Content-Type,Authorization'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
