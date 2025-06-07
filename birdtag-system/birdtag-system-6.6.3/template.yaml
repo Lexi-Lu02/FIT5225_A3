@@ -161,6 +161,9 @@ Resources:
         Variables:
           USER_POOL_ID: !Ref UserPool
           USER_POOL_CLIENT_ID: !Ref UserPoolClient
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          IS_LOCAL: "true"
+          JWT_SECRET: "local-test-secret"
       Policies:
         - Statement:
             - Effect: Allow
@@ -171,11 +174,23 @@ Resources:
                 - cognito-idp:AdminGetUser
               Resource: !GetAtt UserPool.Arn
       Events:
-        Auth:
+        Register:
           Type: Api
           Properties:
             RestApiId: !Ref Api
-            Path: /auth
+            Path: /auth/register
+            Method: post
+        Login:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /auth/login
+            Method: post
+        Verify:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /auth/verify
             Method: post
 
   UploadFunction:
