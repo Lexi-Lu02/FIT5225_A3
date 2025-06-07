@@ -276,4 +276,24 @@ def generate_download_url(bucket_name: str, file_key: str, expires_in: int = 360
             ExpiresIn=expires_in
         )
     except Exception as e:
-        handle_s3_error(e, "generate download URL") 
+        handle_s3_error(e, "generate download URL")
+
+def upload_file_to_s3(bucket_name: str, file_key: str, file_data: bytes, content_type: str) -> None:
+    """
+    Upload file data directly to S3
+    
+    Args:
+        bucket_name (str): S3 bucket name
+        file_key (str): S3 object key
+        file_data (bytes): File data to upload
+        content_type (str): Content type of the file
+    """
+    try:
+        s3_client.put_object(
+            Bucket=bucket_name,
+            Key=file_key,
+            Body=file_data,
+            ContentType=content_type
+        )
+    except Exception as e:
+        handle_s3_error(e, "upload file data") 
