@@ -12,6 +12,9 @@ Globals:
         MEDIA_BUCKET: !Ref MediaBucket
         UPLOAD_PREFIX: uploads/
         THUMBNAIL_PREFIX: thumbnails/
+        USER_TABLE_NAME: BirdTagUsers
+        COGNITO_USER_POOL_ID: your-user-pool-id
+        COGNITO_CLIENT_ID: your-client-id
 
 Parameters:
   StudentName:
