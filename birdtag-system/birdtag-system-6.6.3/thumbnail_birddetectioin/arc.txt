@@ -1,0 +1,2 @@
+# for thumbnail
+arn:aws:lambda:ap-southeast-2:591256669981:layer:thumbnail-dependencies:2
