@@ -12,12 +12,6 @@ Globals:
         MEDIA_BUCKET: !Ref MediaBucket
         UPLOAD_PREFIX: uploads/
         THUMBNAIL_PREFIX: thumbnails/
-        USER_TABLE_NAME: BirdTagUsers
-        COGNITO_USER_POOL_ID: your-user-pool-id
-        COGNITO_CLIENT_ID: your-client-id
-        DDB_TABLE_NAME: BirdTagMedia
-        S3_UPLOAD_BUCKET: your-upload-bucket-name
-        S3_THUMBNAIL_BUCKET: your-thumbnail-bucket-name
 
 Parameters:
   StudentName:
@@ -114,61 +108,30 @@ Resources:
             AllowedOrigins: ['*']
             MaxAge: 3000
 
-  # DynamoDB Table
-Resources:
-
-  UserTable:
+  # DynamoDB Tables
+  BirdTagMetadataTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: BirdTagUsers
+      TableName: !Sub BirdTagMetadata-${StudentName}
       AttributeDefinitions:
-        - AttributeName: email
+        - AttributeName: fileKey
           AttributeType: S
       KeySchema:
-        - AttributeName: email
+        - AttributeName: fileKey
           KeyType: HASH
       BillingMode: PAY_PER_REQUEST
 
-        
-  GenerateThumbnailAndClassifyFunction:
-    Type: AWS::Serverless::Function
+  UserPreferencesTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      FunctionName: generate-thumbnail-classify
-      CodeUri: src/handlers/
-      Handler: lambda_function.lambda_handler
-      Runtime: python3.9
-      MemorySize: 512
-      Timeout: 30
-      Events:
-        S3Trigger:
-          Type: S3
-          Properties:
-            Bucket: birdtag-uploads-dev
-            Events: s3:ObjectCreated:*
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: prefix
-                    Value: upload/image/
-      Environment:
-        Variables:
-          DDB_TABLE: BirdTagMedia
-          SAGEMAKER_ENDPOINT: bird-species-endpoint
-
-
-UserProfileTable:
-  Type: AWS::DynamoDB::Table
-  Properties:
-    TableName: BirdTagUsers
-    BillingMode: PAYPERREQUEST
-    AttributeDefinitions:
-      - AttributeName: email
-        AttributeType: S
-    KeySchema:
-      - AttributeName: email
-        KeyType: HASH
-
-
+      TableName: !Sub BirdTagUserPreferences-${StudentName}
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
 
   # Lambda Layers
   BirdDetectionLayer:
@@ -214,6 +177,7 @@ UserProfileTable:
           IS_LOCAL: "true"
           JWT_SECRET: "local-test-secret"
           PYTHONPATH: "/var/task"
+          USER_PREFERENCES_TABLE: !Ref UserPreferencesTable
       Policies:
         - Statement:
             - Effect: Allow
@@ -223,6 +187,8 @@ UserProfileTable:
                 - cognito-idp:AdminSetUserPassword
                 - cognito-idp:AdminGetUser
               Resource: !GetAtt UserPool.Arn
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserPreferencesTable
       Events:
         Register:
           Type: Api
@@ -293,6 +259,11 @@ UserProfileTable:
           BUCKET_NAME: !Ref MediaBucket
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref MediaBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BirdTagMetadataTable
 
   MediaProcessorFunction:
     Type: AWS::Serverless::Function
@@ -309,6 +280,11 @@ UserProfileTable:
       Layers:
         - !Ref FFmpegLayer
         - !Ref BirdNETAnalyzerLayer
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref MediaBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BirdTagMetadataTable
 
   # S3 Event Notifications
   ThumbnailFunctionS3Permission:
@@ -391,6 +367,7 @@ UserProfileTable:
           BUCKET_NAME: !Ref MediaBucket
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+          SAGEMAKER_ENDPOINT: !Ref BirdDetectionEndpoint
       Layers:
         - !Ref BirdDetectionLayer
       Policies:
@@ -398,13 +375,18 @@ UserProfileTable:
             BucketName: !Ref MediaBucket
         - S3ReadPolicy:
             BucketName: !Ref ModelBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sagemaker:InvokeEndpoint
+              Resource: !GetAtt BirdDetectionEndpoint.Arn
 
   BirdNetAnalyzerFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub birdtag-analyzer-${StudentName}
-      CodeUri: src/handlers/
-      Handler: birdnet_analyzer_lambda.lambda_handler
+      CodeUri: ./
+      Handler: src/handlers/birdnet_analyzer_lambda.lambda_handler
       Runtime: python3.11
       Layers:
         - !Ref BirdNetAnalyzerLayer
@@ -412,11 +394,24 @@ UserProfileTable:
         Variables:
           MEDIA_BUCKET: !Ref MediaBucket
           MODEL_BUCKET: !Ref ModelBucket
+          IS_LOCAL: "true"
+          PYTHONPATH: "/var/task"
+          SAGEMAKER_ENDPOINT: !Ref BirdNetAnalyzerEndpoint
+          SAGEMAKER_AUDIO_ENDPOINT: !Ref AudioAnalysisEndpoint
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref MediaBucket
         - S3ReadPolicy:
             BucketName: !Ref ModelBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BirdTagMetadataTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sagemaker:InvokeEndpoint
+              Resource: 
+                - !GetAtt BirdNetAnalyzerEndpoint.Arn
+                - !GetAtt AudioAnalysisEndpoint.Arn
 
   SearchFunction:
     Type: AWS::Serverless::Function
@@ -430,13 +425,18 @@ UserProfileTable:
           TABLE_NAME: !Ref BirdTagMetadataTable
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BirdTagMetadataTable
       Events:
         Search:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /search
             Method: get
+            RestApiId: !Ref Api
+            Auth:
+              Authorizer: CognitoAuthorizer
 
   StatsFunction:
     Type: AWS::Serverless::Function
@@ -450,13 +450,18 @@ UserProfileTable:
           TABLE_NAME: !Ref BirdTagMetadataTable
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BirdTagMetadataTable
       Events:
         Stats:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /stats
             Method: get
+            RestApiId: !Ref Api
+            Auth:
+              Authorizer: CognitoAuthorizer
 
   ModelMonitorFunction:
     Type: AWS::Serverless::Function
@@ -470,6 +475,11 @@ UserProfileTable:
           TABLE_NAME: !Ref BirdTagMetadataTable
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref BirdTagMetadataTable
+        - S3ReadPolicy:
+            BucketName: !Ref ModelBucket
 
   FileClassifierFunction:
     Type: AWS::Serverless::Function
@@ -483,6 +493,11 @@ UserProfileTable:
           BUCKET_NAME: !Ref MediaBucket
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref MediaBucket
+        - S3ReadPolicy:
+            BucketName: !Ref ModelBucket
 
   BatchProcessorFunction:
     Type: AWS::Serverless::Function
@@ -496,6 +511,11 @@ UserProfileTable:
           BUCKET_NAME: !Ref MediaBucket
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref MediaBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BirdTagMetadataTable
 
   TagFunction:
     Type: AWS::Serverless::Function
@@ -509,13 +529,18 @@ UserProfileTable:
           TABLE_NAME: !Ref BirdTagMetadataTable
           IS_LOCAL: "true"
           PYTHONPATH: "/var/task"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BirdTagMetadataTable
       Events:
         Tag:
           Type: Api
           Properties:
-            RestApiId: !Ref Api
             Path: /tag
             Method: post
+            RestApiId: !Ref Api
+            Auth:
+              Authorizer: CognitoAuthorizer
 
   # API Gateway
   Api:
@@ -543,6 +568,102 @@ UserProfileTable:
       ProviderARNs:
         - !GetAtt UserPool.Arn
 
+  # SageMaker Endpoints
+  BirdDetectionEndpoint:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointName: !Sub birdtag-detection-${StudentName}
+      EndpointConfigName: !Ref BirdDetectionEndpointConfig
+
+  BirdDetectionEndpointConfig:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub birdtag-detection-config-${StudentName}
+      ProductionVariants:
+        - InitialVariantWeight: 1.0
+          ModelName: !Ref BirdDetectionModel
+          VariantName: AllTraffic
+          InitialInstanceCount: 1
+          InstanceType: ml.t2.medium
+
+  BirdDetectionModel:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub birdtag-detection-model-${StudentName}
+      PrimaryContainer:
+        Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/bird-detection:latest
+        ModelDataUrl: !Sub s3://${ModelBucket}/models/bird-detection/model.tar.gz
+      ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
+
+  BirdNetAnalyzerEndpoint:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointName: !Sub birdtag-analyzer-${StudentName}
+      EndpointConfigName: !Ref BirdNetAnalyzerEndpointConfig
+
+  BirdNetAnalyzerEndpointConfig:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub birdtag-analyzer-config-${StudentName}
+      ProductionVariants:
+        - InitialVariantWeight: 1.0
+          ModelName: !Ref BirdNetAnalyzerModel
+          VariantName: AllTraffic
+          InitialInstanceCount: 1
+          InstanceType: ml.t2.medium
+
+  BirdNetAnalyzerModel:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub birdtag-analyzer-model-${StudentName}
+      PrimaryContainer:
+        Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/birdnet-analyzer:latest
+        ModelDataUrl: !Sub s3://${ModelBucket}/models/birdnet-analyzer/model.tar.gz
+      ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
+
+  AudioAnalysisEndpoint:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointName: !Sub birdtag-audio-${StudentName}
+      EndpointConfigName: !Ref AudioAnalysisEndpointConfig
+
+  AudioAnalysisEndpointConfig:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub birdtag-audio-config-${StudentName}
+      ProductionVariants:
+        - InitialVariantWeight: 1.0
+          ModelName: !Ref AudioAnalysisModel
+          VariantName: AllTraffic
+          InitialInstanceCount: 1
+          InstanceType: ml.t2.medium
+
+  AudioAnalysisModel:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub birdtag-audio-model-${StudentName}
+      PrimaryContainer:
+        Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/audio-analysis:latest
+        ModelDataUrl: !Sub s3://${ModelBucket}/models/audio-analysis/model.tar.gz
+      ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
+
+  # SageMaker Execution Role
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub birdtag-sagemaker-role-${StudentName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
 Outputs:
   UserPoolId:
     Description: Cognito User Pool ID
@@ -560,6 +681,22 @@ Outputs:
     Description: S3 Bucket for model files
     Value: !Ref ModelBucket
 
+  UserPreferencesTableName:
+    Description: DynamoDB User Preferences Table Name
+    Value: !Ref UserPreferencesTable
+
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+
+  BirdDetectionEndpointName:
+    Description: SageMaker Bird Detection Endpoint Name
+    Value: !Ref BirdDetectionEndpoint
+
+  BirdNetAnalyzerEndpointName:
+    Description: SageMaker BirdNet Analyzer Endpoint Name
+    Value: !Ref BirdNetAnalyzerEndpoint
+
+  AudioAnalysisEndpointName:
+    Description: SageMaker Audio Analysis Endpoint Name
+    Value: !Ref AudioAnalysisEndpoint
