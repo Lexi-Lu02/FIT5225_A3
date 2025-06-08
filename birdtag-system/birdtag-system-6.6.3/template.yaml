@@ -125,6 +125,20 @@ Resources:
         AttributeName: ttl
         Enabled: false
 
+UserProfileTable:
+  Type: AWS::DynamoDB::Table
+  Properties:
+    TableName: BirdTagUsers
+    BillingMode: PAYPERREQUEST
+    AttributeDefinitions:
+      - AttributeName: email
+        AttributeType: S
+    KeySchema:
+      - AttributeName: email
+        KeyType: HASH
+
+
+
   # Lambda Layers
   BirdDetectionLayer:
     Type: AWS::Serverless::LayerVersion
