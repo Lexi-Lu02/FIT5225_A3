@@ -109,17 +109,21 @@ Resources:
             MaxAge: 3000
 
   # DynamoDB Table
-  BirdTagMetadataTable:
+  Resources:
+  BirdTagMediaTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !Sub BirdTagMetadata-${StudentName}
+      TableName: BirdTagMedia
+      BillingMode: PAYPERREQUEST
       AttributeDefinitions:
-        - AttributeName: fileKey
+        - AttributeName: id
           AttributeType: S
       KeySchema:
-        - AttributeName: fileKey
+        - AttributeName: id
           KeyType: HASH
-      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: false
 
   # Lambda Layers
   BirdDetectionLayer:
