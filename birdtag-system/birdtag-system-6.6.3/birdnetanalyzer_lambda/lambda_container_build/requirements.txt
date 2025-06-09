@@ -1,0 +1,12 @@
+librosa
+resampy
+tensorflow==2.15.1
+scikit-learn==1.6.1
+tqdm
+boto3
+aws-lambda-powertools
+birdnet
+birdnet-analyzer
+soundfile
+ffmpeg-python
+Pillow
