@@ -13,14 +13,19 @@ This directory contains all files required to deploy BirdNET-Analyzer as an AWS 
 
 ```
 lambda_container_build/
-├── Dockerfile           # Lambda container definition
-├── requirements.txt     # Python dependencies
-├── lambda_function.py   # Lambda handler (BirdNET audio analysis)
-├── test.py              # Local test script
-├── test_audio.wav       # Example audio file for testing
-├── cmd.sh               # Build and deployment script
-└── README.md            # This file
+├── Dockerfile                     # Lambda container definition
+├── requirements.txt               # Python dependencies
+├── lambda_function.py             # Lambda handler (BirdNET audio analysis)
+├── test.py                        # Local test script
+├── test_audio.wav                 # Example audio file for testing
+├── cmd.sh                         # Build and deployment script
+├── BirdNET-Analyzer-model-V2.4/   # BirdNET model files (e.g., .tflite)
+├── birdnet_analyzer/              # BirdNET source code
+├── localstack_test/               # LocalStack test utilities
+└── README.md                      # This file
 ```
+
+- **BirdNET-Analyzer-model-V2.4/**: This directory must contain the required BirdNET model file(s), e.g., `BirdNET_GLOBAL_2.4_Model_FP32.tflite`. The Dockerfile should COPY this directory into the container image so the Lambda function can access the model at runtime.
 
 ## Deployment Steps
 
@@ -51,6 +56,7 @@ lambda_container_build/
 5. **Set Environment Variables**
    - `DDB_TABLE` (e.g., `BirdTagMedia`)
    - `REGION` (e.g., `ap-southeast-2`)
+   - `MODEL_PATH` (e.g., `BirdNET-Analyzer-model-V2.4/BirdNET_GLOBAL_2.4_Model_FP32.tflite`)
    - `LOG_LEVEL` (optional, e.g., `INFO`)
    - Any other variables required by your code
 
@@ -93,6 +99,7 @@ See `../db/db_schema.md` for the full schema. Example for audio:
 - The container image is large due to the BirdNET model and dependencies.
 - Ensure your Lambda function has sufficient memory and timeout.
 - If you see errors about missing libraries (e.g., `libGL.so.1`), add `RUN yum install -y mesa-libGL` to your Dockerfile.
+- The Dockerfile must COPY the BirdNET-Analyzer-model-V2.4/ directory into the image for the model to be available at runtime.
 - For best cold start performance, consider using provisioned concurrency.
 - For local testing, use `test.py` and set `LOCAL_TEST=1` in your environment variables.
 
