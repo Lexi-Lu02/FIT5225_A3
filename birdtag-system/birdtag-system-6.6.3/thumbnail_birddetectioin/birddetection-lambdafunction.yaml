@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: An AWS Serverless Application Model template describing your function.
+Resources:
+  birddetectionlambdafunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Description: ''
+      MemorySize: 3008
+      Timeout: 900
+      Architectures:
+        - x86_64
+      EphemeralStorage:
+        Size: 10240
+      Environment:
+        Variables:
+          DDB_TABLE: BirdTagMedia
+          MODEL_PATH: model/model.pt
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 21600
+        MaximumRetryAttempts: 2
+      ImageUri: >-
+        591256669981.dkr.ecr.ap-southeast-2.amazonaws.com/birddetection-lambdaimage@sha256:b5bf39427264f4fdba8dec264affc9efcf66c7c61c8554737c5f5d22dc88a317
+      PackageType: Image
+      RecursiveLoop: Terminate
+      Role: >-
+        arn:aws:iam::591256669981:role/service-role/birddetection-lambdafunction-role-y68yw2ag
+      SnapStart:
+        ApplyOn: None
+      Events:
+        BucketEvent1:
+          Type: S3
+          Properties:
+            Bucket:
+              Ref: Bucket1
+            Events:
+              - s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: upload/image
+  Bucket1:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+  BucketPolicy1:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: Bucket1
+      PolicyDocument:
+        Statement:
+          - Action: s3:*
+            Effect: Deny
+            Principal: '*'
+            Resource:
+              - arn:aws:s3:::Bucket1/*
+              - arn:aws:s3:::Bucket1
+            Condition:
+              Bool:
+                aws:SecureTransport: false
