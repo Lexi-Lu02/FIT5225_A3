@@ -20,6 +20,11 @@ s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['DDB_TABLE'])
 
+# Set environment variables for BirdNET-Analyzer
+os.environ["NUMBA_CACHE_DIR"] = "/tmp/numba_cache"
+import birdnet_analyzer.config as cfg
+cfg.ERROR_LOG_FILE = "/tmp/error_log.txt"
+
 def move_file_to_species_folder(bucket: str, source_key: str, species_name: str) -> str:
     """
     Move file to species folder in S3
