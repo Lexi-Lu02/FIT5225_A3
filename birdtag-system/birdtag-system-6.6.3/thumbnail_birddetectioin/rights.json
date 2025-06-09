@@ -1,0 +1,57 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:CopyObject"  // 添加 CopyObject 权限，用于移动文件到 species 目录
+            ],
+            "Resource": [
+                "arn:aws:s3:::cjin0018-fit5225a3/upload/image/*",
+                "arn:aws:s3:::cjin0018-fit5225a3/thumbnail/*",
+                "arn:aws:s3:::cjin0018-fit5225a3/species/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"  // 添加 ListBucket 权限，用于检查文件存在性
+            ],
+            "Resource": "arn:aws:s3:::cjin0018-fit5225a3"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "dynamodb:PutItem",
+                "dynamodb:GetItem",  // 添加 GetItem 权限，用于查询记录
+                "dynamodb:Query"     // 添加 Query 权限，用于按物种查询
+            ],
+            "Resource": [
+                "arn:aws:dynamodb:ap-southeast-2:591256669981:table/BirdTagMedia",
+                "arn:aws:dynamodb:ap-southeast-2:591256669981:table/BirdTagMedia/index/*"  // 添加索引访问权限
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": [
+                "arn:aws:logs:ap-southeast-2:591256669981:log-group:/aws/lambda/bird-detection:*"  // 更新为你的函数名
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "xray:PutTraceSegments",    // 添加 X-Ray 权限，用于 AWS Lambda Powertools
+                "xray:PutTelemetryRecords"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
