@@ -1,3 +1,6 @@
+# pull dockerhub
+docker pull cjin0018/birdanalyzerlambdaimage:latest
+
 # test
 DDB_TABLE=your-dynamodb-table-name python test.py
 
