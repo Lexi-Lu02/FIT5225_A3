@@ -1,4 +1,211 @@
 // Search Module
+let searchTimeout;
+let currentSearchResults = [];
+
+function setupSearch() {
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', debounceSearch);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                performSearch();
+            }
+        });
+    }
+    
+    if (searchBtn) {
+        searchBtn.addEventListener('click', performSearch);
+    }
+    
+    // Filter buttons
+    filterButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            filterButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            performSearch();
+        });
+    });
+    
+    // Load initial media
+    loadMediaFiles();
+}
+
+function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(performSearch, 500);
+}
+
+async function performSearch() {
+    const token = config.isLocalTesting ? 
+        localStorage.getItem('authToken') : 
+        localStorage.getItem('idToken');
+        
+    if (!token) {
+        showToast('Please login first', 'error');
+        return;
+    }
+    
+    const searchInput = document.getElementById('searchInput');
+    const query = searchInput ? searchInput.value.trim() : '';
+    const activeFilter = document.querySelector('.filter-btn.active');
+    const fileType = activeFilter ? activeFilter.getAttribute('data-filter') : '';
+    
+    try {
+        showLoading(true);
+        
+        const authHeader = config.isLocalTesting ? 
+            `Bearer ${token}` : 
+            token;
+            
+        const params = new URLSearchParams();
+        if (query) params.append('q', query);
+        if (fileType && fileType !== 'all') params.append('file_type', fileType);
+        params.append('limit', '50');
+        
+        const response = await fetch(`${config.apiGatewayUrl}/search?${params}`, {
+            headers: {
+                'Authorization': authHeader
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            currentSearchResults = data.results;
+            displaySearchResults(data.results, query);
+            
+            // Update result count
+            const resultCount = document.getElementById('resultCount');
+            if (resultCount) {
+                resultCount.textContent = `${data.results.length} results found`;
+            }
+        } else {
+            const errorData = await response.json();
+            showToast(errorData.message || 'Search failed', 'error');
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        showToast('Search failed - server error', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function displaySearchResults(results, query = '') {
+    const container = document.getElementById('searchResults') || document.getElementById('mediaContainer') || document.getElementById('galleryContainer');
+    if (!container) return;
+    
+    if (results.length === 0) {
+        container.innerHTML = `
+            <div class="text-center text-muted py-5">
+                <i class="bi bi-search fs-1 mb-3"></i>
+                <h4>No results found</h4>
+                <p>${query ? `No media found for "${query}"` : 'Try uploading some media files first'}</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = results.map(media => createMediaCard(media, query)).join('');
+    
+    // Add click handlers for media items
+    container.querySelectorAll('.media-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const mediaId = card.getAttribute('data-media-id');
+            showMediaModal(mediaId);
+        });
+    });
+}
+
+function createMediaCard(media, searchQuery = '') {
+    const createdDate = new Date(media.created_at).toLocaleDateString();
+    const detectedSpecies = media.detected_species || [];
+    
+    // Highlight search terms in species names
+    const highlightedSpecies = detectedSpecies.map(species => {
+        if (searchQuery && species.toLowerCase().includes(searchQuery.toLowerCase())) {
+            return species.replace(new RegExp(searchQuery, 'gi'), `<mark>$&</mark>`);
+        }
+        return species;
+    });
+    
+    return `
+        <div class="media-card thumbnail-container" data-media-id="${media.id}">
+            <div class="media-preview">
+                ${getMediaPreview(media)}
+            </div>
+            <div class="media-info thumbnail-overlay">
+                <div class="media-title fw-bold">${media.original_name}</div>
+                <div class="species-tags mb-2">
+                    ${highlightedSpecies.map(species => `<span class="tag-chip">${species}</span>`).join('')}
+                </div>
+                <div class="media-meta">
+                    <small class="text-light">
+                        <i class="bi bi-calendar me-1"></i>${createdDate}
+                        <i class="bi bi-file-earmark ms-2 me-1"></i>${media.file_type}
+                    </small>
+                </div>
+                ${media.detection_boxes && media.detection_boxes.length > 0 ? 
+                    `<div class="detection-info">
+                        <small class="text-light">
+                            <i class="bi bi-eye me-1"></i>${media.detection_boxes.length} detection(s)
+                        </small>
+                    </div>` : ''
+                }
+            </div>
+        </div>
+    `;
+}
+
+function getMediaPreview(media) {
+    // Create URL for media based on environment
+    let mediaUrl;
+    if (config.isLocalTesting && media.s3_path.startsWith('uploads/')) {
+        mediaUrl = `${config.apiGatewayUrl}/${media.s3_path}`;
+    } else {
+        mediaUrl = media.s3_path;
+    }
+    
+    switch (media.file_type) {
+        case 'image':
+            return `<img src="${mediaUrl}" alt="${media.original_name}" class="thumbnail" 
+                        onerror="this.src='https://via.placeholder.com/200x200?text=Image+Not+Found'">`;
+        case 'video':
+            return `
+                <video class="thumbnail" poster="${media.thumbnail_path || ''}" muted>
+                    <source src="${mediaUrl}" type="video/mp4">
+                </video>
+                <div class="media-type-overlay">
+                    <i class="bi bi-play-circle-fill"></i>
+                </div>
+            `;
+        case 'audio':
+            return `
+                <div class="audio-placeholder thumbnail">
+                    <i class="bi bi-music-note-beamed"></i>
+                    <div>Audio</div>
+                    <small>${media.original_name}</small>
+                </div>
+            `;
+        default:
+            return `
+                <div class="unknown-placeholder thumbnail">
+                    <i class="bi bi-file-earmark"></i>
+                    <div>Unknown</div>
+                </div>
+            `;
+    }
+}
+
+async function showMediaModal(mediaId) {
+    // Implementation for showing media modal
+    console.log('Showing modal for media:', mediaId);
+    showToast('Media modal functionality to be implemented', 'info');
+}
+
+// Legacy search functions from original code
 function addSearchTag() {
     const species = document.getElementById('speciesSelect').value;
     const count = document.getElementById('countInput').value;
@@ -173,67 +380,6 @@ async function resolveToOriginal() {
     } finally {
         showLoading(false);
     }
-}
-
-function displaySearchResults(urls) {
-    const resultsContainer = document.getElementById('searchResults');
-    const resultsInfo = document.getElementById('searchResultsInfo');
-    
-    if (!urls || urls.length === 0) {
-        resultsContainer.innerHTML = '<p class="text-muted w-100 text-center">No results found</p>';
-        resultsInfo.innerHTML = '';
-        return;
-    }
-    
-    resultsInfo.innerHTML = `<div class="alert alert-info">Found ${urls.length} results</div>`;
-    resultsContainer.innerHTML = '';
-    
-    urls.forEach((url, index) => {
-        const isVideo = url.includes('.mp4') || url.includes('.avi') || url.includes('.mov');
-        const isAudio = url.includes('.mp3') || url.includes('.wav');
-        const isThumbnail = url.includes('thumbnail') || url.includes('thumb');
-        
-        let content = '';
-        if (isVideo) {
-            content = `
-                <div class="text-center p-3">
-                    <i class="bi bi-camera-video" style="font-size: 3rem;"></i>
-                    <p class="mt-2">Video File</p>
-                    <a href="${url}" class="btn btn-sm btn-primary" download>
-                        <i class="bi bi-download"></i> Download
-                    </a>
-                </div>
-            `;
-        } else if (isAudio) {
-            content = `
-                <div class="text-center p-3">
-                    <i class="bi bi-music-note-beamed" style="font-size: 3rem;"></i>
-                    <p class="mt-2">Audio File</p>
-                    <audio controls class="w-100">
-                        <source src="${url}" type="audio/mpeg">
-                    </audio>
-                </div>
-            `;
-        } else {
-            content = `
-                <img src="${url}" class="thumbnail" alt="Result ${index + 1}" 
-                     onclick="showFullImage('${url}', ${isThumbnail})">
-                <div class="thumbnail-overlay">
-                    <small>Click to ${isThumbnail ? 'get original' : 'preview'}</small>
-                </div>
-            `;
-        }
-        
-        const html = `
-            <div class="thumbnail-container">
-                <input type="checkbox" class="form-check-input position-absolute top-0 start-0 m-2" 
-                       value="${url}" onchange="updateSelectedFiles()">
-                ${content}
-            </div>
-        `;
-        
-        resultsContainer.insertAdjacentHTML('beforeend', html);
-    });
 }
 
 async function showFullImage(url, isThumbnail) {

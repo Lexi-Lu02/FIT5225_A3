@@ -2,9 +2,13 @@
 function setupDropZone() {
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
-
+    
+    if (!dropZone || !fileInput) return;
+    
+    // Click to upload
     dropZone.addEventListener('click', () => fileInput.click());
     
+    // Drag and drop events
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('dragover');
@@ -17,90 +21,232 @@ function setupDropZone() {
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
-        handleFiles(e.dataTransfer.files);
+        const files = e.dataTransfer.files;
+        handleFiles(files);
     });
-
+    
+    // File input change
     fileInput.addEventListener('change', (e) => {
         handleFiles(e.target.files);
     });
 }
 
 async function handleFiles(files) {
-    if (!checkAuth()) return;
+    if (!files.length) return;
     
-    document.getElementById('uploadQueue').style.display = 'block';
-    const uploadList = document.getElementById('uploadList');
-    uploadList.innerHTML = '';
+    // Check authentication based on environment
+    const token = config.isLocalTesting ? 
+        localStorage.getItem('authToken') : 
+        localStorage.getItem('idToken');
+        
+    if (!token) {
+        showToast('Please login first', 'error');
+        return;
+    }
     
     for (let file of files) {
-        const fileId = 'file-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        const fileHtml = `
-            <div class="file-item" id="${fileId}">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <i class="bi bi-file-earmark me-2"></i>
-                        <span>${file.name}</span>
-                        <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
-                    </div>
-                    <div>
-                        <span class="upload-status badge bg-warning">Pending</span>
-                    </div>
-                </div>
-                <div class="progress mt-2" style="height: 5px;">
-                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-                </div>
-            </div>
-        `;
-        uploadList.insertAdjacentHTML('beforeend', fileHtml);
-        
-        await uploadFile(file, fileId);
+        if (validateFile(file)) {
+            await uploadFile(file);
+        }
     }
 }
 
-async function uploadFile(file, fileId) {
-    const fileElement = document.getElementById(fileId);
-    const statusElement = fileElement.querySelector('.upload-status');
-    const progressBar = fileElement.querySelector('.progress-bar');
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
     
     try {
-        statusElement.textContent = 'Getting URL...';
-        statusElement.className = 'upload-status badge bg-info';
+        showToast(`Uploading ${file.name}...`, 'info');
+        showLoading(true);
         
-        // Get presigned URL
-        const response = await fetch(`${config.apiGatewayUrl}/upload/presign?filename=${encodeURIComponent(file.name)}`, {
+        const token = config.isLocalTesting ? 
+            localStorage.getItem('authToken') : 
+            localStorage.getItem('idToken');
+            
+        const authHeader = config.isLocalTesting ? 
+            `Bearer ${token}` : 
+            token;
+        
+        const response = await fetch(`${config.apiGatewayUrl}/upload`, {
+            method: 'POST',
             headers: {
-                'Authorization': localStorage.getItem('idToken')
-            }
+                'Authorization': authHeader
+            },
+            body: formData
         });
-        
-        if (!response.ok) throw new Error('Failed to get upload URL');
         
         const data = await response.json();
         
-        // Upload to S3
-        statusElement.textContent = 'Uploading...';
-        progressBar.style.width = '50%';
+        if (response.ok) {
+            showToast(`${file.name} uploaded successfully!`, 'success');
+            
+            // Simulate processing delay for local testing
+            if (config.isLocalTesting) {
+                setTimeout(() => {
+                    showToast(`Analysis complete for ${file.name}. Species detected: ${data.data.detected_species.join(', ')}`, 'success');
+                    // Refresh the media display
+                    if (typeof loadMediaFiles === 'function') {
+                        loadMediaFiles();
+                    }
+                }, 2000);
+            } else {
+                // For production, refresh immediately
+                if (typeof loadMediaFiles === 'function') {
+                    loadMediaFiles();
+                }
+            }
+        } else {
+            showToast(`Upload failed: ${data.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('Upload error:', error);
+        showToast(`Upload failed: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// File validation
+function validateFile(file) {
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    const allowedTypes = [
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+        'video/mp4', 'video/avi', 'video/mov', 'video/quicktime',
+        'audio/wav', 'audio/mp3', 'audio/m4a'
+    ];
+    
+    if (file.size > maxSize) {
+        showToast('File size exceeds 100MB limit', 'error');
+        return false;
+    }
+    
+    if (!allowedTypes.includes(file.type)) {
+        showToast('File type not supported', 'error');
+        return false;
+    }
+    
+    return true;
+}
+
+// Load user's media files
+async function loadMediaFiles() {
+    const token = config.isLocalTesting ? 
+        localStorage.getItem('authToken') : 
+        localStorage.getItem('idToken');
         
-        const uploadResponse = await fetch(data.uploadUrl, {
-            method: 'PUT',
-            body: file,
+    if (!token) return;
+    
+    try {
+        const authHeader = config.isLocalTesting ? 
+            `Bearer ${token}` : 
+            token;
+            
+        const response = await fetch(`${config.apiGatewayUrl}/media`, {
             headers: {
-                'Content-Type': file.type
+                'Authorization': authHeader
             }
         });
         
-        if (!uploadResponse.ok) throw new Error('Upload failed');
-        
-        progressBar.style.width = '100%';
-        statusElement.textContent = 'Complete';
-        statusElement.className = 'upload-status badge bg-success';
-        
-        showToast(`${file.name} uploaded successfully!`, 'success');
-        
+        if (response.ok) {
+            const media = await response.json();
+            displayMediaFiles(media);
+        } else {
+            console.error('Failed to load media files');
+        }
     } catch (error) {
-        console.error('Upload error:', error);
-        statusElement.textContent = 'Failed';
-        statusElement.className = 'upload-status badge bg-danger';
-        showToast(`Failed to upload ${file.name}: ${error.message}`, 'danger');
+        console.error('Error loading media files:', error);
     }
+}
+
+function displayMediaFiles(mediaList) {
+    // Try to find any available container for displaying media files
+    const container = document.getElementById('myFilesList') || 
+                     document.getElementById('mediaContainer') || 
+                     document.getElementById('galleryContainer') ||
+                     document.getElementById('searchResults');
+    
+    if (!container) {
+        console.error('No container found for displaying media files');
+        return;
+    }
+    
+    console.log(`Displaying ${mediaList.length} media files`);
+    
+    if (mediaList.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted py-4">No media files uploaded yet.</div>';
+        return;
+    }
+    
+    container.innerHTML = mediaList.map(media => {
+        // Create URL for media based on environment
+        let mediaUrl;
+        if (config.isLocalTesting && media.s3_path.startsWith('uploads/')) {
+            mediaUrl = `${config.apiGatewayUrl}/${media.s3_path}`;
+        } else {
+            mediaUrl = media.s3_path;
+        }
+            
+        return `
+            <div class="thumbnail-container" data-media-id="${media.id}">
+                ${getMediaPreview(media, mediaUrl)}
+                <div class="thumbnail-overlay">
+                    <div class="fw-bold">${media.original_name}</div>
+                    <div class="species-tags mb-1">
+                        ${media.detected_species.map(species => `<span class="tag-chip">${species}</span>`).join('')}
+                    </div>
+                    <small class="text-light">
+                        <i class="bi bi-calendar me-1"></i>${new Date(media.created_at).toLocaleDateString()}
+                        <br>
+                        <i class="bi bi-file-earmark me-1"></i>${media.file_type}
+                    </small>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    // Add click handlers for media items
+    container.querySelectorAll('.thumbnail-container').forEach(item => {
+        item.addEventListener('click', () => {
+            const mediaId = item.getAttribute('data-media-id');
+            showMediaDetails(mediaId);
+        });
+    });
+}
+
+function getMediaPreview(media, mediaUrl) {
+    switch (media.file_type) {
+        case 'image':
+            return `<img src="${mediaUrl}" alt="${media.original_name}" class="thumbnail" 
+                        onerror="this.src='https://via.placeholder.com/200x200?text=Image+Not+Found'">`;
+        case 'video':
+            return `
+                <video class="thumbnail" poster="${media.thumbnail_path || ''}" muted>
+                    <source src="${mediaUrl}" type="video/mp4">
+                </video>
+                <div class="media-type-overlay">
+                    <i class="bi bi-play-circle-fill"></i>
+                </div>
+            `;
+        case 'audio':
+            return `
+                <div class="audio-placeholder thumbnail">
+                    <i class="bi bi-music-note-beamed"></i>
+                    <div>Audio</div>
+                    <small>${media.original_name}</small>
+                </div>
+            `;
+        default:
+            return `
+                <div class="unknown-placeholder thumbnail">
+                    <i class="bi bi-file-earmark"></i>
+                    <div>Unknown</div>
+                </div>
+            `;
+    }
+}
+
+async function showMediaDetails(mediaId) {
+    // Implementation for showing media details modal
+    console.log('Showing details for media:', mediaId);
+    showToast('Media details functionality to be implemented', 'info');
 } 
