@@ -21,7 +21,7 @@ Resources:
         MaximumEventAgeInSeconds: 21600
         MaximumRetryAttempts: 2
       ImageUri: >-
-        591256669981.dkr.ecr.ap-southeast-2.amazonaws.com/birdnetanalyzer-lambdaimage@sha256:a5f65066b52c450793186fa87ba1c8011287d210dc6ae0160d8eea319d63a9ac
+        591256669981.dkr.ecr.ap-southeast-2.amazonaws.com/birdnetanalyzer-lambdaimage@sha256:9ac822c4875791b64f5fed40a47a06d7abffc03a2d6e09ebeabd6a254bc8fe82
       PackageType: Image
       Policies:
         - Statement:
@@ -77,6 +77,7 @@ Resources:
               Resource:
                 - >-
                   arn:aws:logs:ap-southeast-2:591256669981:log-group:/aws/lambda/birdnetanalyzer-lambdafunction:*
+      RecursiveLoop: Terminate
       SnapStart:
         ApplyOn: None
       Events:
