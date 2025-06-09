@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: BirdTag System Full Stack
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.9
+    MemorySize: 512
+    Environment:
+      Variables:
+        DDB_TABLE_NAME: BirdTagMedia
+
+Resources:
+
+  MediaDBHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: media-db-writer
+      Handler: media_db_audio_video.lambda_handler
+      CodeUri: birddetection_sagemaker/
+      Runtime: python3.9
+      Events:
+        MediaUpload:
+          Type: Api
+          Properties:
+            Path: /v1/media/submit
+            Method: post
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: BirdTagMedia
+
+  BirdTagMedia:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: BirdTagMedia
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  UserTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: BirdTagUsers
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  RegisterUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: register-user
+      Handler: registeruser-handler.lambda_handler
+      CodeUri: src/handlers/
+      Runtime: python3.9
+      Events:
+        Register:
+          Type: Api
+          Properties:
+            Path: /v1/user/register
+            Method: post
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: BirdTagUsers
+      Environment:
+        Variables:
+          USER_TABLE_NAME: BirdTagUsers
+
+BirdTagMedia:
+  Type: AWS::DynamoDB::Table
+  Properties:
+    TableName: BirdTagMedia
+    AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+    KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+    BillingMode: PAY_PER_REQUEST
