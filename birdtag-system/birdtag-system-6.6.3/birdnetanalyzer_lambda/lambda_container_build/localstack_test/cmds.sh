@@ -1,22 +1,20 @@
 #!/bin/bash
 
-# 自动重启 localstack 容器，确保环境干净
-echo "Restarting localstack container..."
+# Automatically restart the LocalStack container to ensure a clean environment
+echo "Restarting LocalStack container..."
 docker rm -f localstack 2>/dev/null || true
 
-# 设置错误处理
+# Enable error handling
 set -e
 trap 'echo "Error occurred. Cleaning up..."; cleanup' ERR
 
 # pip install awslocal jq
-
 # sudo usermod -aG docker $USER
-
 # newgrp docker
 
-# 清理函数
+# Cleanup function
 cleanup() {
-    echo "Cleaning up..."
+    echo "Cleaning up AWS resources and container..."
     awslocal s3 rb s3://your-test-bucket --force || true
     awslocal dynamodb delete-table --table-name YourDDBTableName || true
     awslocal lambda delete-function --function-name birdnet-audio-analyzer || true
@@ -25,7 +23,7 @@ cleanup() {
     docker rm localstack || true
 }
 
-# 启动 LocalStack
+# Start LocalStack
 echo "Starting LocalStack..."
 docker run --rm -d \
   --name localstack \
@@ -38,35 +36,35 @@ docker run --rm -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   localstack/localstack
 
-# 等待 LocalStack 启动
+# Wait for LocalStack to be ready
 echo "Waiting for LocalStack to start..."
 sleep 10
 
-# 设置 AWS 凭证
+# Configure AWS credentials and alias for local testing
 export AWS_ACCESS_KEY_ID=test
 export AWS_SECRET_ACCESS_KEY=test
 export AWS_REGION=ap-southeast-2
 alias awslocal="aws --endpoint-url=http://localhost:4566"
 
-# 清理旧的 AWS 资源（S3 桶、Lambda 函数、DynamoDB 表）
+# Clean up any existing AWS resources (S3 bucket, Lambda, DynamoDB)
 echo "Cleaning up old AWS resources..."
 awslocal s3 rb s3://your-test-bucket --force 2>/dev/null || true
 awslocal lambda delete-function --function-name birdnet-audio-analyzer 2>/dev/null || true
 awslocal dynamodb delete-table --table-name YourDDBTableName 2>/dev/null || true
 
-# 创建 S3 存储桶
+# Create S3 bucket
 echo "Creating S3 bucket..."
 awslocal s3 mb s3://your-test-bucket
 
-# 上传测试音频文件
+# Upload test audio file
 echo "Uploading test audio file..."
 awslocal s3 cp test_audio.wav s3://your-test-bucket/upload/audio/test.wav
 
-# 删除旧的 DynamoDB 表（如果存在）
-echo "Deleting old DynamoDB table if exists..."
+# Delete old DynamoDB table if it exists
+echo "Deleting old DynamoDB table if it exists..."
 awslocal dynamodb delete-table --table-name YourDDBTableName 2>/dev/null || true
 
-# 创建 DynamoDB 表
+# Create DynamoDB table
 echo "Creating DynamoDB table..."
 DDB_CREATE_OUTPUT=$(timeout 60s awslocal dynamodb create-table \
   --table-name YourDDBTableName \
@@ -76,14 +74,14 @@ DDB_CREATE_OUTPUT=$(timeout 60s awslocal dynamodb create-table \
 DDB_CREATE_EXIT=$?
 echo "$DDB_CREATE_OUTPUT"
 if [ $DDB_CREATE_EXIT -ne 0 ]; then
-  echo "[错误] DynamoDB 表创建失败，错误信息如下："
+  echo "[ERROR] Failed to create DynamoDB table. Details:"
   echo "$DDB_CREATE_OUTPUT"
   exit 1
 fi
 
-echo "DynamoDB table created!"
+echo "DynamoDB table created successfully!"
 
-# 创建 Lambda 函数
+# Create Lambda function
 echo "Creating Lambda function..."
 LAMBDA_CREATE_OUTPUT=$(awslocal lambda create-function \
   --function-name birdnet-audio-analyzer \
@@ -96,18 +94,18 @@ LAMBDA_CREATE_OUTPUT=$(awslocal lambda create-function \
 LAMBDA_CREATE_EXIT=$?
 echo "$LAMBDA_CREATE_OUTPUT"
 if [ $LAMBDA_CREATE_EXIT -ne 0 ]; then
-  echo "[错误] Lambda 函数创建失败，错误信息如下："
+  echo "[ERROR] Failed to create Lambda function. Details:"
   echo "$LAMBDA_CREATE_OUTPUT"
   exit 1
 fi
 
-echo "Lambda function created!"
+echo "Lambda function created successfully!"
 
-# ===== 本地测试跳过 S3 事件源映射相关步骤 =====
-echo "[本地测试] 跳过 S3 事件源映射创建，仅手动触发 Lambda 测试主流程。"
+# ===== Local testing: skip S3 event source mapping steps =====
+echo "[LOCAL TEST] Skipping S3 event source mapping; manually invoking Lambda for main workflow."
 
-# 手动触发 Lambda 函数测试
-echo "Testing Lambda function..."
+# Invoke Lambda function for testing
+echo "Invoking Lambda function for test..."
 awslocal lambda invoke \
   --function-name birdnet-audio-analyzer \
   --payload file://event.json \
@@ -117,12 +115,12 @@ awslocal lambda invoke \
 echo "Lambda response:"
 cat response.json
 
-# 检查 S3 结果
-echo "Checking S3 results..."
+# Verify S3 results
+echo "Listing contents of S3 upload directory..."
 awslocal s3 ls s3://your-test-bucket/upload/audio/
 
-# 检查 DynamoDB 结果
-echo "Checking DynamoDB results..."
+# Verify DynamoDB results
+echo "Scanning DynamoDB table..."
 awslocal dynamodb scan --table-name YourDDBTableName
 
-echo "Test completed successfully!"
+echo "Local test completed successfully!"
