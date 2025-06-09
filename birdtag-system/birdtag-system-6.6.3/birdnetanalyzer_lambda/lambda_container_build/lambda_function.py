@@ -82,7 +82,9 @@ def save_to_dynamodb(
         's3_path': new_key,
         'thumbnail_path': None,
         'detected_species': detected_species,
+        'detection_boxes': None,
         'detection_segments': detection_segments,
+        'detection_frames': None,
         'created_at': created_at
     }
     item = float_to_decimal(item)
