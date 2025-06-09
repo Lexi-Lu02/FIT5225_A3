@@ -1,4 +1,4 @@
-# BirdTagMedia DynamoDB Table Schema (Professional English Version)
+# BirdTagMedia DynamoDB Table Schema
 
 This document describes the unified DynamoDB table schema for all media types (image, audio, video) in the Assignment project, including field definitions, types, descriptions, and sample records.
 
