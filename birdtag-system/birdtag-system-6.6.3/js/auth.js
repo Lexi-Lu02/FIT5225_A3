@@ -197,6 +197,8 @@ async function handleSignup(e) {
 async function handleLocalSignup(email, password) {
     try {
         showLoading(true);
+        console.log('Starting signup request for:', email);
+        
         const response = await fetch(`${config.apiGatewayUrl}/auth/register`, {
             method: 'POST',
             headers: {
@@ -205,21 +207,43 @@ async function handleLocalSignup(email, password) {
             body: JSON.stringify({ email, password, name: email.split('@')[0] })
         });
         
+        console.log('Signup response status:', response.status);
+        console.log('Signup response ok:', response.ok);
+        
         const data = await response.json();
-        console.log('Signup response:', data);
+        console.log('Signup response data:', data);
         
         if (response.ok) {
+            console.log('Signup successful, setting token and user');
             localStorage.setItem('authToken', data.token);
             currentUser = data.user;
+            
+            console.log('Showing success toast');
             showToast('Account created successfully!', 'success');
-            bootstrap.Modal.getInstance(document.getElementById('signupModal')).hide();
+            
+            console.log('Hiding signup modal');
+            const modalElement = document.getElementById('signupModal');
+            if (modalElement) {
+                const modalInstance = bootstrap.Modal.getInstance(modalElement);
+                if (modalInstance) {
+                    modalInstance.hide();
+                } else {
+                    console.error('Modal instance not found');
+                }
+            } else {
+                console.error('Signup modal element not found');
+            }
+            
+            console.log('Reloading page in 1 second');
             setTimeout(() => location.reload(), 1000);
         } else {
+            console.log('Signup failed with status:', response.status);
             showToast(data.message || 'Signup failed', 'error');
         }
     } catch (error) {
-        console.error('Signup error:', error);
-        showToast('Signup failed - server error', 'error');
+        console.error('Signup error details:', error);
+        console.error('Error stack:', error.stack);
+        showToast(`Signup failed - ${error.message}`, 'error');
     } finally {
         showLoading(false);
     }

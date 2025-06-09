@@ -848,82 +848,178 @@ def get_media():
 def search():
     try:
         data = request.get_json()
-        query = data.get('query', '') if data else ''
+        print(f"🔍 收到搜索请求: {data}")
         
-        # 构建媒体对象数组（与/api/media保持一致的格式）
-        search_results = []
-        
-        for file_url in user_files_db:
-            filename = file_url.split('/')[-1]
-            metadata = file_metadata.get(file_url, {})
+        # 检查是否是标签计数搜索（对象形式如 {"sparrow": 1}）
+        if data and isinstance(data, dict) and any(isinstance(v, int) for v in data.values()):
+            # 标签计数搜索
+            search_tags = data
+            print(f"📋 标签计数搜索: {search_tags}")
             
-            # 检查是否匹配搜索条件
-            should_include = False
-            if not query:
-                # 如果没有搜索词，包含所有文件
-                should_include = True
-            else:
-                # 在文件名中搜索
-                if query.lower() in filename.lower():
+            search_results = []
+            
+            for file_url in user_files_db:
+                filename = file_url.split('/')[-1]
+                metadata = file_metadata.get(file_url, {})
+                
+                # 检查文件是否满足任一标签要求（OR操作）
+                matches_any_tag = False
+                
+                for tag_species, required_count in search_tags.items():
+                    # 检查检测到的物种
+                    detected_species = metadata.get('detected_species', [])
+                    # 检查用户添加的标签
+                    user_tags = metadata.get('tags', [])
+                    
+                    # 计算该物种在此文件中的出现次数（大小写不敏感）
+                    species_count = 0
+                    
+                    # 从检测到的物种中计数（大小写不敏感）
+                    for species in detected_species:
+                        if species.lower() == tag_species.lower():
+                            species_count += 1
+                    
+                    # 从用户标签中计数（大小写不敏感）
+                    for tag in user_tags:
+                        if tag.lower() == tag_species.lower():
+                            species_count += 1
+                    
+                    # 如果该物种达到要求的最小数量，则包含此文件
+                    if species_count >= required_count:
+                        matches_any_tag = True
+                        break  # 找到一个匹配就足够了
+                
+                if matches_any_tag:
+                    # 构建媒体对象
+                    detected_species = metadata.get('detected_species', [])
+                    tags = metadata.get('tags', [])
+                    
+                    # 组合用户标签和检测到的物种
+                    all_tags = []
+                    if detected_species:
+                        all_tags.extend(detected_species)
+                    
+                    # 添加用户自定义标签（排除已经存在的物种名）
+                    for tag in tags:
+                        if tag not in ['uploaded'] and tag not in detected_species:
+                            all_tags.append(tag)
+                    
+                    # 判断文件类型
+                    file_type = 'image'
+                    if filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                        file_type = 'video'
+                    elif filename.lower().endswith(('.wav', '.mp3', '.flac', '.m4a')):
+                        file_type = 'audio'
+                    
+                    media_obj = {
+                        'id': filename,
+                        'original_name': filename,
+                        'filename': filename,
+                        's3_path': file_url,
+                        'thumbnail': file_url,
+                        'created_at': metadata.get('upload_time', datetime.datetime.now().isoformat()),
+                        'upload_time': metadata.get('upload_time', datetime.datetime.now().isoformat()),
+                        'file_type': file_type,
+                        'tags': all_tags,
+                        'bird_detected': metadata.get('bird_detected', False),
+                        'detection_status': metadata.get('detection_status', 'pending'),
+                        'detected_species': detected_species,
+                        'detection_boxes': metadata.get('detection_boxes', []),
+                        'detection_segments': metadata.get('detection_segments', []),
+                        'confidence': metadata.get('confidence', 0),
+                        'url': file_url
+                    }
+                    
+                    search_results.append(media_obj)
+            
+            print(f"✅ 标签搜索找到 {len(search_results)} 个匹配文件")
+            
+        else:
+            # 文本搜索（原有逻辑）
+            query = data.get('query', '') if data else ''
+            print(f"📝 文本搜索: '{query}'")
+            
+            search_results = []
+            
+            for file_url in user_files_db:
+                filename = file_url.split('/')[-1]
+                metadata = file_metadata.get(file_url, {})
+                
+                # 检查是否匹配搜索条件
+                should_include = False
+                if not query:
+                    # 如果没有搜索词，包含所有文件
                     should_include = True
-                # 在检测到的物种中搜索
-                detected_species = metadata.get('detected_species', [])
-                for species in detected_species:
-                    if query.lower() in species.lower():
+                else:
+                    # 在文件名中搜索
+                    if query.lower() in filename.lower():
                         should_include = True
-                        break
-                # 在标签中搜索
-                tags = metadata.get('tags', [])
-                for tag in tags:
-                    if query.lower() in tag.lower():
-                        should_include = True
-                        break
-            
-            if should_include:
-                # 获取检测到的物种信息
-                detected_species = metadata.get('detected_species', [])
-                tags = metadata.get('tags', [])
+                    # 在检测到的物种中搜索
+                    detected_species = metadata.get('detected_species', [])
+                    for species in detected_species:
+                        if query.lower() in species.lower():
+                            should_include = True
+                            break
+                    # 在标签中搜索
+                    tags = metadata.get('tags', [])
+                    for tag in tags:
+                        if query.lower() in tag.lower():
+                            should_include = True
+                            break
                 
-                # 组合用户标签和检测到的物种
-                all_tags = []
-                if detected_species:
-                    all_tags.extend(detected_species)
-                
-                # 添加用户自定义标签（排除已经存在的物种名）
-                for tag in tags:
-                    if tag not in ['uploaded'] and tag not in detected_species:
-                        all_tags.append(tag)
-                
-                # 构建媒体对象
-                media_obj = {
-                    'id': filename,
-                    'original_name': filename,
-                    'filename': filename,
-                    's3_path': file_url,  # 添加s3_path属性
-                    'thumbnail': file_url,
-                    'created_at': metadata.get('upload_time', datetime.datetime.now().isoformat()),
-                    'upload_time': metadata.get('upload_time', datetime.datetime.now().isoformat()),
-                    'file_type': 'image',  # 默认为图片
-                    'tags': all_tags,
-                    'bird_detected': metadata.get('bird_detected', False),
-                    'detection_status': metadata.get('detection_status', 'pending'),
-                    'detected_species': detected_species,
-                    'detection_boxes': metadata.get('detection_boxes', []),
-                    'confidence': metadata.get('confidence', 0),
-                    'url': file_url
-                }
-                
-                search_results.append(media_obj)
+                if should_include:
+                    # 获取检测到的物种信息
+                    detected_species = metadata.get('detected_species', [])
+                    tags = metadata.get('tags', [])
+                    
+                    # 组合用户标签和检测到的物种
+                    all_tags = []
+                    if detected_species:
+                        all_tags.extend(detected_species)
+                    
+                    # 添加用户自定义标签（排除已经存在的物种名）
+                    for tag in tags:
+                        if tag not in ['uploaded'] and tag not in detected_species:
+                            all_tags.append(tag)
+                    
+                    # 判断文件类型
+                    file_type = 'image'
+                    if filename.lower().endswith(('.mp4', '.avi', '.mov', '.mkv', '.webm')):
+                        file_type = 'video'
+                    elif filename.lower().endswith(('.wav', '.mp3', '.flac', '.m4a')):
+                        file_type = 'audio'
+                    
+                    # 构建媒体对象
+                    media_obj = {
+                        'id': filename,
+                        'original_name': filename,
+                        'filename': filename,
+                        's3_path': file_url,
+                        'thumbnail': file_url,
+                        'created_at': metadata.get('upload_time', datetime.datetime.now().isoformat()),
+                        'upload_time': metadata.get('upload_time', datetime.datetime.now().isoformat()),
+                        'file_type': file_type,
+                        'tags': all_tags,
+                        'bird_detected': metadata.get('bird_detected', False),
+                        'detection_status': metadata.get('detection_status', 'pending'),
+                        'detected_species': detected_species,
+                        'detection_boxes': metadata.get('detection_boxes', []),
+                        'detection_segments': metadata.get('detection_segments', []),
+                        'confidence': metadata.get('confidence', 0),
+                        'url': file_url
+                    }
+                    
+                    search_results.append(media_obj)
         
         return jsonify({
             'statusCode': 200,
             'results': search_results,
             'total': len(search_results),
-            'query': query
+            'query': data
         })
         
     except Exception as e:
-        print(f"搜索错误: {str(e)}")
+        print(f"❌ 搜索错误: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 # 获取文件元数据

@@ -432,7 +432,7 @@ async function showImageWithDetection(url) {
                         
                         ${detectionInfo.tags && detectionInfo.tags.length > 0 ? `
                             <div class="mt-3">
-                                <strong>标签:</strong>
+                                <strong>Tags:</strong>
                                 <div class="mt-1">
                                     ${detectionInfo.tags.map(tag => 
                                         `<span class="badge bg-secondary me-1">${tag}</span>`
@@ -446,7 +446,7 @@ async function showImageWithDetection(url) {
         } else {
             metadataDiv.innerHTML = `
                 <div class="alert alert-info">
-                    <i class="bi bi-info-circle"></i> 无法获取检测信息
+                    <i class="bi bi-info-circle"></i> Unable to get detection information
                 </div>
             `;
         }
@@ -462,12 +462,12 @@ async function showImageWithDetection(url) {
 function getStatusBadge(status) {
     switch (status) {
         case 'completed':
-            return '<span class="badge bg-success">检测完成</span>';
+            return '<span class="badge bg-success">Detection Completed</span>';
         case 'pending':
-            return '<span class="badge bg-warning">检测中</span>';
+            return '<span class="badge bg-warning">Processing</span>';
         case 'failed':
-            return '<span class="badge bg-danger">检测失败</span>';
+            return '<span class="badge bg-danger">Detection Failed</span>';
         default:
-            return '<span class="badge bg-secondary">未开始</span>';
+            return '<span class="badge bg-secondary">Not Started</span>';
     }
 } 
