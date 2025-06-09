@@ -1,43 +1,63 @@
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:GetObject",
-                "s3:PutObject",
-                "s3:DeleteObject"
-            ],
-            "Resource": [
-                "arn:aws:s3:::cjin0018-fit5225a3/upload/image/*",
-                "arn:aws:s3:::cjin0018-fit5225a3/thumbnail/*",
-                "arn:aws:s3:::cjin0018-fit5225a3/species/*"
-            ]
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "dynamodb:PutItem"
-            ],
-            "Resource": "arn:aws:dynamodb:ap-southeast-2:591256669981:table/BirdTagMedia"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "sagemaker:InvokeEndpoint"
-            ],
-            "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents"
-            ],
-            "Resource": [
-                "arn:aws:logs:*:*:log-group:/aws/lambda/thumbnail-generator:*"
-            ]
-        }
-    ]
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Action": [
+				"s3:GetObject",
+				"s3:PutObject",
+				"s3:DeleteObject"
+			],
+			"Resource": [
+				"arn:aws:s3:::cjin0018-fit5225a3/upload/audio/*",
+				"arn:aws:s3:::cjin0018-fit5225a3/thumbnail/*",
+				"arn:aws:s3:::cjin0018-fit5225a3/species/*"
+			]
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"s3:ListBucket"
+			],
+			"Resource": "arn:aws:s3:::cjin0018-fit5225a3"
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"dynamodb:PutItem",
+				"dynamodb:GetItem",
+				"dynamodb:Query"
+			],
+			"Resource": [
+				"arn:aws:dynamodb:ap-southeast-2:591256669981:table/BirdTagMedia",
+				"arn:aws:dynamodb:ap-southeast-2:591256669981:table/BirdTagMedia/index/*"
+			]
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"logs:CreateLogGroup",
+				"logs:CreateLogStream",
+				"logs:PutLogEvents"
+			],
+			"Resource": "arn:aws:logs:ap-southeast-2:591256669981:log-group:/aws/lambda/birdnet-analyzer:*"
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"xray:PutTraceSegments",
+				"xray:PutTelemetryRecords"
+			],
+			"Resource": "*"
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"ecr:GetDownloadUrlForLayer",
+				"ecr:BatchGetImage",
+				"ecr:BatchCheckLayerAvailability"
+			],
+			"Resource": "arn:aws:ecr:ap-southeast-2:591256669981:repository/birdnet-analyzer"
+		}
+	]
 }
