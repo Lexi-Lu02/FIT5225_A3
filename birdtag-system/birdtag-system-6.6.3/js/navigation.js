@@ -15,5 +15,15 @@ function showPage(pageName) {
     // Load page-specific data
     if (pageName === 'dashboard') loadDashboard();
     if (pageName === 'myfiles') loadMyFiles();
-    if (pageName === 'notifications') loadSubscriptions();
+    if (pageName === 'notifications') {
+        // 刷新所有通知相关数据
+        if (typeof refreshNotifications === 'function') {
+            refreshNotifications();
+        } else {
+            // 回退到单独的函数调用
+            if (typeof loadSubscriptions === 'function') loadSubscriptions();
+            if (typeof loadNotificationHistory === 'function') loadNotificationHistory();
+            if (typeof loadNotificationStats === 'function') loadNotificationStats();
+        }
+    }
 } 

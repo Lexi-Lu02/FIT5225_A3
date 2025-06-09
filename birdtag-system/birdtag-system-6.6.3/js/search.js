@@ -29,8 +29,9 @@ function setupSearch() {
         });
     });
     
-    // Load initial media
+    // Load initial media and species list
     loadMediaFiles();
+    loadSpeciesList();
 }
 
 function debounceSearch() {
@@ -59,16 +60,18 @@ async function performSearch() {
         const authHeader = config.isLocalTesting ? 
             `Bearer ${token}` : 
             token;
-            
-        const params = new URLSearchParams();
-        if (query) params.append('q', query);
-        if (fileType && fileType !== 'all') params.append('file_type', fileType);
-        params.append('limit', '50');
         
-        const response = await fetch(`${config.apiGatewayUrl}/search?${params}`, {
+        // 使用POST请求调用/api/v1/search端点
+        const response = await fetch(`${config.apiGatewayUrl}/v1/search`, {
+            method: 'POST',
             headers: {
-                'Authorization': authHeader
-            }
+                'Authorization': authHeader,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: query,
+                file_type: fileType || 'all'
+            })
         });
         
         if (response.ok) {
@@ -87,7 +90,7 @@ async function performSearch() {
         }
     } catch (error) {
         console.error('Search error:', error);
-        showToast('Search failed - server error', 'error');
+        showToast('Search failed: ' + error.message, 'error');
     } finally {
         showLoading(false);
     }
@@ -110,13 +113,31 @@ function displaySearchResults(results, query = '') {
     
     container.innerHTML = results.map(media => createMediaCard(media, query)).join('');
     
-    // Add click handlers for media items
+    // Add click handlers for media items (but prevent checkbox clicks from triggering modal)
     container.querySelectorAll('.media-card').forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (e) => {
+            // 如果点击的是复选框或其容器，不打开模态框
+            if (e.target.type === 'checkbox' || e.target.closest('.selection-checkbox')) {
+                return;
+            }
+            
             const mediaId = card.getAttribute('data-media-id');
             showMediaModal(mediaId);
         });
     });
+    
+    // 确保复选框事件正常工作
+    container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.addEventListener('change', function(e) {
+            e.stopPropagation(); // 防止事件冒泡
+            updateSelectedFiles();
+        });
+    });
+    
+    // 初始化选中状态显示
+    if (typeof updateSelectedFiles === 'function') {
+        updateSelectedFiles();
+    }
 }
 
 function createMediaCard(media, searchQuery = '') {
@@ -131,8 +152,17 @@ function createMediaCard(media, searchQuery = '') {
         return species;
     });
     
+    // Generate unique media URL for local testing
+    const mediaUrl = media.s3_path || media.url || media.thumbnail || '';
+    
     return `
         <div class="media-card thumbnail-container" data-media-id="${media.id}">
+            <!-- 选择复选框 -->
+            <div class="selection-checkbox">
+                <input type="checkbox" class="form-check-input" value="${mediaUrl}" 
+                       onchange="updateSelectedFiles()">
+            </div>
+            
             <div class="media-preview">
                 ${getMediaPreview(media)}
             </div>
@@ -162,15 +192,27 @@ function createMediaCard(media, searchQuery = '') {
 function getMediaPreview(media) {
     // Create URL for media based on environment
     let mediaUrl;
-    if (config.isLocalTesting && media.s3_path.startsWith('uploads/')) {
-        mediaUrl = `${config.apiGatewayUrl}/${media.s3_path}`;
+    
+    // 安全地处理s3_path，避免undefined错误
+    const s3Path = media.s3_path || media.url || media.thumbnail || '';
+    
+    if (config.isLocalTesting && s3Path && s3Path.startsWith('uploads/')) {
+        mediaUrl = `${config.apiGatewayUrl}/${s3Path}`;
     } else {
-        mediaUrl = media.s3_path;
+        mediaUrl = s3Path || media.url || media.thumbnail || '';
     }
     
-    switch (media.file_type) {
+    // 如果仍然没有有效的URL，使用占位符
+    if (!mediaUrl) {
+        mediaUrl = 'https://via.placeholder.com/200x200?text=No+Image';
+    }
+    
+    const fileType = media.file_type || 'image';
+    const mediaName = media.original_name || media.filename || 'Unknown';
+    
+    switch (fileType) {
         case 'image':
-            return `<img src="${mediaUrl}" alt="${media.original_name}" class="thumbnail" 
+            return `<img src="${mediaUrl}" alt="${mediaName}" class="thumbnail" 
                         onerror="this.src='https://via.placeholder.com/200x200?text=Image+Not+Found'">`;
         case 'video':
             return `
@@ -186,7 +228,7 @@ function getMediaPreview(media) {
                 <div class="audio-placeholder thumbnail">
                     <i class="bi bi-music-note-beamed"></i>
                     <div>Audio</div>
-                    <small>${media.original_name}</small>
+                    <small>${mediaName}</small>
                 </div>
             `;
         default:
@@ -383,9 +425,8 @@ async function resolveToOriginal() {
 }
 
 async function showFullImage(url, isThumbnail) {
-    if (isThumbnail && checkAuth()) {
-        // If it's a thumbnail, resolve to original first
-        showLoading(true);
+    if (isThumbnail) {
+        // Resolve thumbnail to original if needed
         try {
             const response = await fetch(`${config.apiGatewayUrl}/v1/resolve`, {
                 method: 'POST',
@@ -393,22 +434,102 @@ async function showFullImage(url, isThumbnail) {
                     'Authorization': localStorage.getItem('idToken'),
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ thumbnailUrl: url })
+                body: JSON.stringify({ thumbnail_url: url })
             });
             
             if (response.ok) {
                 const data = await response.json();
-                url = data.originalUrl;
+                window.open(data.originalUrl, '_blank');
+            } else {
+                window.open(url, '_blank');
             }
         } catch (error) {
-            console.error('Failed to resolve thumbnail:', error);
-        } finally {
-            showLoading(false);
+            window.open(url, '_blank');
         }
+    } else {
+        window.open(url, '_blank');
     }
-    
-    const modal = new bootstrap.Modal(document.getElementById('imageModal'));
-    document.getElementById('fullImage').src = url;
-    document.getElementById('downloadLink').href = url;
-    modal.show();
-} 
+}
+
+// 添加缺失的loadMediaFiles函数
+async function loadMediaFiles() {
+    try {
+        showLoading(true);
+        
+        // 调用搜索API获取所有媒体文件
+        const response = await fetch(`${config.apiGatewayUrl}/v1/search`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({}) // 空查询返回所有文件
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            currentSearchResults = data.results;
+            displaySearchResults(data.results);
+            
+            // Update result count
+            const resultCount = document.getElementById('resultCount');
+            if (resultCount) {
+                resultCount.textContent = `${data.results.length} files found`;
+            }
+        } else {
+            console.error('Failed to load media files');
+            const container = document.getElementById('searchResults') || document.getElementById('mediaContainer');
+            if (container) {
+                container.innerHTML = `
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-exclamation-triangle fs-1 mb-3"></i>
+                        <h4>Failed to load media files</h4>
+                        <p>Please try refreshing the page</p>
+                    </div>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading media files:', error);
+        const container = document.getElementById('searchResults') || document.getElementById('mediaContainer');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center text-muted py-5">
+                    <i class="bi bi-wifi-off fs-1 mb-3"></i>
+                    <h4>Connection Error</h4>
+                    <p>Please check your internet connection and try again</p>
+                </div>
+            `;
+        }
+    } finally {
+        showLoading(false);
+    }
+}
+
+// 加载可用物种列表到批量标签管理下拉框
+async function loadSpeciesList() {
+    try {
+        const response = await fetch(`${config.apiGatewayUrl}/species`);
+        if (response.ok) {
+            const data = await response.json();
+            const speciesSelect = document.getElementById('bulkTagSpecies');
+            
+            if (speciesSelect && data.species) {
+                // 保留默认选项，添加物种列表
+                speciesSelect.innerHTML = '<option value="">Select species...</option>' +
+                    data.species.map(species => 
+                        `<option value="${species.toLowerCase()}">${species}</option>`
+                    ).join('');
+            }
+        }
+    } catch (error) {
+        console.error('Error loading species list:', error);
+        // 如果加载失败，使用默认的物种列表
+    }
+}
+
+// 确保在DOM加载后初始化搜索功能
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof setupSearch === 'function') {
+        setupSearch();
+    }
+}); 

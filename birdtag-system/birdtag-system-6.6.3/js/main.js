@@ -51,13 +51,17 @@ function setupEventListeners() {
         console.log('Signup form listener added');
     }
     
-    // Subscription form (placeholder)
+    // Subscription form
     const subscriptionForm = document.getElementById('subscriptionForm');
     if (subscriptionForm) {
         subscriptionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            await subscribe(e);
+            // Call the subscribe function from notifications.js
+            if (typeof subscribe === 'function') {
+                await subscribe(e);
+            }
         });
+        console.log('Subscription form listener added');
     }
     
     // Theme toggle
@@ -122,12 +126,6 @@ function showProfile() {
     }
     
     showToast(`User Profile: ${currentUser.email}`, 'info');
-}
-
-// Subscription functionality (placeholder)
-async function subscribe(e) {
-    e.preventDefault();
-    showToast('Subscription functionality coming soon', 'info');
 }
 
 // Dashboard functionality

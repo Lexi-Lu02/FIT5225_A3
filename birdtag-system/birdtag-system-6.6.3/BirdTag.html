@@ -302,6 +302,58 @@
         [data-theme="dark"] .dropdown-item { color: var(--text-color); }
         [data-theme="dark"] .dropdown-item:hover { background-color: var(--dark-bg); }
         [data-theme="dark"] .file-item { border-color: #495057; background-color: var(--card-bg); }
+
+        /* Selection checkbox for media cards */
+        .selection-checkbox {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 4px;
+            padding: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+        }
+
+        .selection-checkbox:hover {
+            background-color: rgba(255, 255, 255, 1);
+            transform: scale(1.1);
+        }
+
+        .selection-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* Media card improvements */
+        .media-card {
+            position: relative;
+            display: inline-block;
+            margin: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .media-card:hover {
+            transform: scale(1.05);
+        }
+
+        .media-card.selected {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 3px var(--primary-color);
+            border-radius: 10px;
+        }
+
+        [data-theme="dark"] .selection-checkbox {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+        }
+
+        [data-theme="dark"] .selection-checkbox:hover {
+            background-color: rgba(0, 0, 0, 0.9);
+        }
     </style>
 </head>
 <body>
@@ -464,25 +516,10 @@
                         </div>
                         <div class="card-body">
                             <!-- Tab Navigation for Different Search Types -->
-                            <ul class="nav nav-tabs mb-3" id="searchTabs" role="tablist">
+                            <ul class="nav nav-tabs">
                                 <li class="nav-item" role="presentation">
                                     <button class="nav-link active" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tagsSearch" type="button">
                                         <i class="bi bi-tags"></i> Tags
-                                    </button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="species-tab" data-bs-toggle="tab" data-bs-target="#speciesSearch" type="button">
-                                        <i class="bi bi-search"></i> Species
-                                    </button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="thumbnail-tab" data-bs-toggle="tab" data-bs-target="#thumbnailSearch" type="button">
-                                        <i class="bi bi-image"></i> Thumbnail
-                                    </button>
-                                </li>
-                                <li class="nav-item" role="presentation">
-                                    <button class="nav-link" id="file-tab" data-bs-toggle="tab" data-bs-target="#fileSearch" type="button">
-                                        <i class="bi bi-file-earmark"></i> File
                                     </button>
                                 </li>
                             </ul>
@@ -513,57 +550,6 @@
                                     <div id="searchTags" class="mb-2"></div>
                                     <button class="btn btn-primary w-100" onclick="searchByTags()">
                                         <i class="bi bi-search"></i> Search with Counts
-                                    </button>
-                                </div>
-
-                                <!-- Species-Only Search -->
-                                <div class="tab-pane fade" id="speciesSearch" role="tabpanel">
-                                    <h6>Search by Species Only</h6>
-                                    <small class="text-muted mb-2">Find all files containing at least one of selected species</small>
-                                    <div class="mb-3 mt-2">
-                                        <select class="form-select" id="speciesOnlySelect">
-                                            <option value="">Select species...</option>
-                                            <option value="crow">Crow</option>
-                                            <option value="pigeon">Pigeon</option>
-                                            <option value="sparrow">Sparrow</option>
-                                            <option value="eagle">Eagle</option>
-                                            <option value="parrot">Parrot</option>
-                                            <option value="owl">Owl</option>
-                                            <option value="peacock">Peacock</option>
-                                            <option value="kingfisher">Kingfisher</option>
-                                            <option value="myna">Myna</option>
-                                        </select>
-                                    </div>
-                                    <button class="btn btn-primary w-100" onclick="searchBySpeciesOnly()">
-                                        <i class="bi bi-search"></i> Find All Files
-                                    </button>
-                                </div>
-
-                                <!-- Thumbnail URL Search -->
-                                <div class="tab-pane fade" id="thumbnailSearch" role="tabpanel">
-                                    <h6>Find Original from Thumbnail</h6>
-                                    <small class="text-muted mb-2">Get full-size image from thumbnail URL</small>
-                                    <div class="mb-3 mt-2">
-                                        <input type="text" class="form-control" id="thumbnailUrl" 
-                                               placeholder="Paste thumbnail S3 URL here">
-                                        <small class="text-muted">Example: https://bucket.s3.amazonaws.com/thumbnails/...</small>
-                                    </div>
-                                    <button class="btn btn-secondary w-100" onclick="resolveToOriginal()">
-                                        <i class="bi bi-arrows-fullscreen"></i> Get Full Size Image
-                                    </button>
-                                </div>
-
-                                <!-- Search by File -->
-                                <div class="tab-pane fade" id="fileSearch" role="tabpanel">
-                                    <h6>Search by File Content</h6>
-                                    <small class="text-muted mb-2">Upload a file to find similar tagged files</small>
-                                    <div class="mb-3 mt-2">
-                                        <input type="file" class="form-control" id="searchFileInput" 
-                                               accept="image/*,video/*,audio/*">
-                                        <small class="text-muted">File will be analyzed but not stored</small>
-                                    </div>
-                                    <button class="btn btn-secondary w-100" onclick="searchByFile()">
-                                        <i class="bi bi-file-earmark-search"></i> Find Similar Files
                                     </button>
                                 </div>
                             </div>
@@ -670,22 +656,20 @@
                             <form id="subscriptionForm">
                                 <div class="mb-3">
                                     <label class="form-label">Email Address</label>
-                                    <input type="email" class="form-control" id="notificationEmail" required>
+                                    <input type="email" class="form-control" id="subscriptionEmail" required>
                                 </div>
                                 
                                 <div class="mb-3">
                                     <label class="form-label">Select Bird Species</label>
-                                    <select class="form-select" id="notificationSpecies" required>
+                                    <select class="form-select" id="subscriptionSpecies" required>
                                         <option value="">Choose species...</option>
-                                        <option value="crow">Crow</option>
-                                        <option value="pigeon">Pigeon</option>
-                                        <option value="sparrow">Sparrow</option>
-                                        <option value="eagle">Eagle</option>
-                                        <option value="parrot">Parrot</option>
-                                        <option value="owl">Owl</option>
-                                        <option value="peacock">Peacock</option>
-                                        <option value="kingfisher">Kingfisher</option>
-                                        <option value="myna">Myna</option>
+                                        <option value="Crow">Crow</option>
+                                        <option value="Pigeon">Pigeon</option>
+                                        <option value="Sparrow">Sparrow</option>
+                                        <option value="Owl">Owl</option>
+                                        <option value="Peacock">Peacock</option>
+                                        <option value="Kingfisher">Kingfisher</option>
+                                        <option value="Myna">Myna</option>
                                     </select>
                                 </div>
                                 
@@ -705,6 +689,22 @@
                         <div class="card-body">
                             <div id="subscriptionsList">
                                 <p class="text-muted">No active subscriptions</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notification History Row -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="bi bi-clock-history"></i> Notification History</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="notificationHistory">
+                                <p class="text-muted">Loading notification history...</p>
                             </div>
                         </div>
                     </div>

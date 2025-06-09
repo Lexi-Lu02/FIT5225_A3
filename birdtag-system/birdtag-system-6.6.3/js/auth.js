@@ -223,4 +223,44 @@ async function handleLocalSignup(email, password) {
     } finally {
         showLoading(false);
     }
+}
+
+// Function to get current user
+function getCurrentUser() {
+    if (currentUser) {
+        return currentUser;
+    }
+    
+    // Try to get user from stored token
+    if (config.isLocalTesting) {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                if (Date.now() < payload.exp * 1000) {
+                    return { id: payload.id, email: payload.email };
+                }
+            } catch (e) {
+                console.error('Error parsing stored token:', e);
+            }
+        }
+    } else {
+        const idToken = localStorage.getItem('idToken');
+        if (idToken) {
+            try {
+                const payload = JSON.parse(atob(idToken.split('.')[1]));
+                if (Date.now() < payload.exp * 1000) {
+                    return { 
+                        id: payload.sub, 
+                        email: payload.email,
+                        username: payload['cognito:username']
+                    };
+                }
+            } catch (e) {
+                console.error('Error parsing stored token:', e);
+            }
+        }
+    }
+    
+    return null;
 } 

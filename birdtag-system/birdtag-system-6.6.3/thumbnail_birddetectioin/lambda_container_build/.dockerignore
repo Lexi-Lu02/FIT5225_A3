@@ -1,0 +1,8 @@
+*.md
+test_*.py
+test_*.jpg
+test_*.mp4
+cmd.sh
+.git*
+__pycache__
+*.pyc

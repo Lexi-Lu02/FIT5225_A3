@@ -12,15 +12,29 @@ import cv2
 import numpy as np
 from PIL import Image
 import io
+import random
+import shutil
+import hashlib
+import base64
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 初始化AWS客户端
-s3 = boto3.client('s3')
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['DDB_TABLE'])
+# 检查本地测试模式
+is_local_test = os.environ.get("LOCAL_TEST") == "1" or os.environ.get("DDB_TABLE") == "test-table"
+
+# 初始化AWS客户端 - 只在非本地测试模式下连接真实AWS服务
+if not is_local_test:
+    s3 = boto3.client('s3')
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table(os.environ['DDB_TABLE'])
+else:
+    # 本地测试模式下使用模拟客户端
+    s3 = None
+    dynamodb = None
+    table = None
+    logger.info("Running in LOCAL TEST mode - AWS services disabled")
 
 # 全局变量存储模型
 model = None
@@ -30,26 +44,35 @@ def get_model():
     global model
     if model is None:
         try:
-            # 检查是否在本地测试模式
-            is_local_test = os.environ.get("LOCAL_TEST") == "1"
+            # 修复模型路径 - Docker中模型在 /var/task/model/ 目录下
+            model_paths = [
+                '/var/task/model/model.pt',  # Docker中的正确路径
+                '/var/task/model.pt',        # 备用路径
+                'model/model.pt',            # 相对路径
+                'model.pt'                   # 当前目录
+            ]
             
-            if is_local_test:
-                # 本地测试模式：使用当前目录下的模型文件
-                model_path = os.path.join(os.getcwd(), "model.pt")
-                logger.info(f"Local test: Loading model from current directory: {model_path}")
-            else:
-                # Lambda环境：使用容器内的模型文件
-                root = os.environ.get('LAMBDA_TASK_ROOT', '/var/task')
-                model_path = os.environ.get('MODEL_PATH', 'model/model.pt')
-                model_path = os.path.join(root, model_path)
-                logger.info(f"Lambda environment: Loading model from: {model_path}")
+            model_path = None
+            for path in model_paths:
+                if os.path.exists(path):
+                    model_path = path
+                    logger.info(f"Found model at: {model_path}")
+                    break
             
+            if not model_path:
+                raise FileNotFoundError("Model file not found in any expected location")
+            
+            logger.info(f"Loading YOLO model from: {model_path}")
             model = YOLO(model_path)
-            logger.info("Model loaded successfully")
+            logger.info("✅ YOLO model loaded successfully!")
+            return model
+            
         except Exception as e:
-            logger.error(f"Error loading model: {str(e)}")
+            logger.error(f"Error loading model: {e}")
             logger.error(traceback.format_exc())
-            raise
+            # 不再返回None或模拟结果，直接抛出异常
+            raise Exception(f"Failed to load YOLO model: {str(e)}")
+    
     return model
 
 def float_to_decimal(obj):
@@ -114,150 +137,198 @@ def save_to_dynamodb(
     logger.info(f"Saved analysis results to DynamoDB with ID: {media_id}")
     return media_id
 
-def process_image(bucket: str, key: str) -> dict:
-    """处理图片并返回结果"""
+def process_image(bucket, key):
+    """处理图片并进行鸟类检测"""
     try:
-        # 下载图片到临时文件
-        local_file = f"/tmp/{os.path.basename(key)}"
-        is_local_test = os.environ.get("LOCAL_TEST") == "1" or bucket == "test-bucket"
-        if is_local_test:
-            import shutil
-            shutil.copyfile(os.path.basename(key), local_file)
-            logger.info(f"Local test: copied {os.path.basename(key)} to {local_file}")
-        else:
-            s3.download_file(bucket, key, local_file)
-            logger.info(f"Downloaded file to: {local_file}")
+        logger.info(f"🐦 Processing image: {key}")
         
-        # 生成缩略图
-        thumbnail_key = f"thumbnail/{os.path.basename(key)}"
-        with Image.open(local_file) as img:
-            # 计算缩略图尺寸
-            max_size = 200
-            ratio = min(max_size/img.width, max_size/img.height)
-            new_size = (int(img.width * ratio), int(img.height * ratio))
-            # 生成缩略图
-            thumbnail = img.resize(new_size, Image.Resampling.LANCZOS)
-            # 保存缩略图到内存
-            thumbnail_buffer = io.BytesIO()
-            thumbnail.save(thumbnail_buffer, format='JPEG', quality=75)
-            thumbnail_buffer.seek(0)
-            # 上传缩略图到S3
-            s3.upload_fileobj(
-                thumbnail_buffer,
-                bucket,
-                thumbnail_key,
-                ExtraArgs={'ContentType': 'image/jpeg'}
-            )
-            logger.info(f"Thumbnail uploaded: s3://{bucket}/{thumbnail_key}")
-        
-        # 运行模型推理
-        logger.info("Running in LOCAL TEST mode" if is_local_test else "Running in AWS Lambda mode")
+        # 获取模型 - 如果失败会抛出异常
         model = get_model()
+        
+        # 只支持S3模式，不再支持LOCAL_TEST模拟
+        local_file = f"/tmp/{os.path.basename(key)}"
+        s3 = boto3.client('s3')
+        s3.download_file(bucket, key, local_file)
+        
+        # 使用真实模型进行检测
+        logger.info("🔍 Running YOLO detection...")
         results = model(local_file)
         
-        # 处理检测结果
-        detection_boxes = []
-        detected_species_set = set()
+        # 处理真实检测结果
+        detection_results = []
         
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                # 获取坐标和置信度
-                x1, y1, x2, y2 = box.xyxy[0].tolist()
-                confidence = float(box.conf[0])
-                class_id = int(box.cls[0])
-                class_name = result.names[class_id]
-                
-                # 归一化坐标
-                img_height, img_width = result.orig_shape
-                x1, x2 = x1/img_width, x2/img_width
-                y1, y2 = y1/img_height, y2/img_height
-                
-                detection_boxes.append({
-                    'species': class_name,
-                    'code': class_name.lower().replace(' ', '_'),
-                    'box': [x1, y1, x2, y2],
-                    'confidence': confidence
+        for r in results:
+            boxes = r.boxes
+            if boxes is not None:
+                for box in boxes:
+                    # 获取边界框坐标
+                    xyxy = box.xyxy[0].tolist()  # [x1, y1, x2, y2]
+                    conf = float(box.conf[0])    # 置信度
+                    cls = int(box.cls[0])        # 类别ID
+                    
+                    # 获取类别名称
+                    class_name = model.names[cls] if cls < len(model.names) else f"class_{cls}"
+                    
+                    detection_results.append({
+                        'species': class_name,
+                        'confidence': round(conf, 3),
+                        'bounding_box': [int(x) for x in xyxy],
+                        'class_id': cls
+                    })
+        
+        # 如果没有检测到任何对象
+        if not detection_results:
+            return {
+                'statusCode': 200,
+                'body': json.dumps({
+                    'message': 'No birds detected in image',
+                    'detection_results': {
+                        'species': None,
+                        'confidence': 0.0,
+                        'bounding_boxes': [],
+                        'detected_objects': 0
+                    }
                 })
-                detected_species_set.add(class_name)
+            }
         
-        detected_species = list(detected_species_set)
-        logger.info(f"Detected {len(detected_species)} species: {detected_species_set}")
+        # 选择置信度最高的检测结果
+        best_detection = max(detection_results, key=lambda x: x['confidence'])
         
-        # 获取最高置信度的物种
-        highest_confidence_species = None
-        if detection_boxes:
-            highest_confidence_box = max(detection_boxes, key=lambda x: x['confidence'])
-            highest_confidence_species = highest_confidence_box['species']
-        else:
-            highest_confidence_species = 'unknown'
+        # 格式化返回结果
+        response_body = {
+            'message': 'Success',
+            'detection_results': {
+                'species': best_detection['species'],
+                'confidence': best_detection['confidence'],
+                'bounding_boxes': [best_detection['bounding_box']],
+                'detected_objects': len(detection_results)
+            }
+        }
         
-        # 移动文件到物种文件夹
-        new_key = move_file_to_species_folder(bucket, key, highest_confidence_species)
-        logger.info(f"Moved file to species folder: {new_key}")
-        
-        # 保存到DynamoDB
-        created_at = datetime.utcnow().isoformat()
-        media_id = save_to_dynamodb(
-            bucket=bucket,
-            original_key=key,
-            new_key=new_key,
-            thumbnail_key=thumbnail_key,
-            detection_boxes=detection_boxes,
-            detected_species=detected_species,
-            created_at=created_at
-        )
+        logger.info(f"✅ Detection completed: {best_detection['species']} (confidence: {best_detection['confidence']})")
         
         # 清理临时文件
-        os.remove(local_file)
-        logger.info("Cleaned up temporary file")
+        if os.path.exists(local_file):
+            os.remove(local_file)
         
         return {
             'statusCode': 200,
-            'body': json.dumps({
-                'message': 'Image processed successfully',
-                'record_id': media_id,
-                'detected_species': detected_species,
-                'detection_boxes': detection_boxes,
-                'file_location': {
-                    'original': key,
-                    'new': new_key,
-                    'thumbnail': thumbnail_key,
-                    'species': highest_confidence_species
-                },
-                'created_at': created_at
-            })
+            'body': json.dumps(response_body)
         }
         
     except Exception as e:
-        logger.error(f"Error processing image: {str(e)}")
+        logger.error(f"Error processing image: {e}")
         logger.error(traceback.format_exc())
+        
+        # 返回错误而不是模拟数据
         return {
             'statusCode': 500,
             'body': json.dumps({
-                'message': 'Error processing image',
-                'error': str(e)
+                'error': f'Model detection failed: {str(e)}',
+                'message': 'Real model detection is required but failed'
             })
         }
 
 def lambda_handler(event, context):
-    """Lambda函数入口点"""
+    """主处理函数"""
     try:
-        # 解析S3事件
-        record = event['Records'][0]
-        bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
+        logger.info(f"🚀 收到事件: {event}")
         
-        logger.info(f"Processing image: s3://{bucket}/{key}")
-        return process_image(bucket, key)
+        # 检查是否有直接传入的图片数据
+        if 'image_data' in event:
+            # 直接处理base64编码的图片数据
+            filename = event.get('filename', 'uploaded_image.jpg')
+            logger.info(f"🖼️ 处理base64图片数据: {filename}")
+            
+            # 解码base64图片数据
+            image_data = base64.b64decode(event['image_data'])
+            
+            # 保存到临时文件
+            local_file = f"/tmp/{filename}"
+            with open(local_file, 'wb') as f:
+                f.write(image_data)
+            
+            # 验证图片
+            try:
+                with Image.open(local_file) as img:
+                    logger.info(f"📏 图片尺寸: {img.size}, 格式: {img.format}")
+            except Exception as e:
+                logger.error(f"❌ 图片验证失败: {e}")
+                return {
+                    'statusCode': 400,
+                    'body': json.dumps({'error': f'Invalid image: {str(e)}'})
+                }
+            
+            # 获取模型并进行检测
+            model = get_model()
+            
+            # 运行检测
+            results = model(local_file)
+            
+            # 处理检测结果
+            detection_data = []
+            for result in results:
+                boxes = result.boxes
+                if boxes is not None:
+                    for box in boxes:
+                        cls_id = int(box.cls[0])
+                        confidence = float(box.conf[0])
+                        xyxy = box.xyxy[0].tolist()
+                        
+                        species_name = model.names[cls_id]
+                        detection_data.append({
+                            'species': species_name,
+                            'confidence': confidence,
+                            'bounding_box': xyxy
+                        })
+            
+            # 返回检测结果
+            if detection_data:
+                best_detection = max(detection_data, key=lambda x: x['confidence'])
+                response_data = {
+                    "message": "Success",
+                    "detection_results": {
+                        "species": best_detection['species'],
+                        "confidence": best_detection['confidence'],
+                        "bounding_boxes": [best_detection['bounding_box']],
+                        "detected_objects": len(detection_data)
+                    }
+                }
+            else:
+                response_data = {
+                    "message": "No birds detected",
+                    "detection_results": {
+                        "species": "None",
+                        "confidence": 0.0,
+                        "bounding_boxes": [],
+                        "detected_objects": 0
+                    }
+                }
+            
+            logger.info(f"✅ 检测完成: {response_data}")
+            return {
+                'statusCode': 200,
+                'body': json.dumps(response_data)
+            }
+        
+        # 处理传统的S3事件格式（保持向后兼容）
+        elif 'Records' in event:
+            record = event['Records'][0]
+            bucket = record['s3']['bucket']['name']
+            key = record['s3']['object']['key']
+            return process_image(bucket, key)
+        
+        else:
+            logger.error("❌ 无效的事件格式")
+            return {
+                'statusCode': 400,
+                'body': json.dumps({'error': 'Invalid event format'})
+            }
         
     except Exception as e:
-        logger.error(f"Error in lambda_handler: {str(e)}")
-        logger.error(traceback.format_exc())
+        logger.error(f"Error in lambda_handler: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return {
             'statusCode': 500,
-            'body': json.dumps({
-                'message': 'Internal server error',
-                'error': str(e)
-            })
+            'body': json.dumps({'error': str(e)})
         } 
