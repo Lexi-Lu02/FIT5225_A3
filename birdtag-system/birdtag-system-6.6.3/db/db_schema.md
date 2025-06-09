@@ -1,55 +1,55 @@
-# BirdTagMedia DynamoDB 表结构说明（Assignment全媒体通用）
+# BirdTagMedia DynamoDB Table Schema (Professional English Version)
 
-本文件描述了Assignment项目中所有媒体类型（图片、音频、视频）统一的DynamoDB表（BirdTagMedia）字段结构、类型、含义及样例。
-
----
-
-## 表结构字段
-
-| 字段名              | 类型         | 说明                                      | 适用类型      |
-|---------------------|-------------|-------------------------------------------|---------------|
-| id                  | string (PK) | 主键，唯一ID（UUID）                      | all           |
-| user_id             | string      | 上传用户ID（Cognito，若无则为None）       | all           |
-| file_type           | string      | 文件类型（image/audio/video）             | all           |
-| s3_path             | string      | 原文件S3路径                              | all           |
-| thumbnail_path      | string      | 缩略图S3路径（图片/视频有，音频为空）     | image,video   |
-| detected_species    | list<string>| 检测到的物种（物种名数组）                | all           |
-| detection_boxes     | list<map>   | 检测框（图片/视频，YOLO输出）             | image,video   |
-| detection_segments  | list<map>   | 检测片段（音频，BirdNET输出）             | audio         |
-| detection_frames    | list<map>   | 检测帧（视频，YOLO输出）                  | video         |
-| created_at          | string      | 上传/分析时间（ISO8601字符串）            | all           |
+This document describes the unified DynamoDB table schema for all media types (image, audio, video) in the Assignment project, including field definitions, types, descriptions, and sample records.
 
 ---
 
-## 字段详细说明
+## Table Fields
 
-- **id**：唯一主键，UUID格式
-- **user_id**：上传用户ID，来自Cognito（如无则为None）
-- **file_type**：文件类型，'image'/'audio'/'video'
-- **s3_path**：原始文件在S3中的路径
-- **thumbnail_path**：缩略图S3路径，图片/视频有，音频为None
-- **detected_species**：本媒体检测到的所有鸟类物种名称
-- **detection_boxes**（图片/视频）：目标检测框，结构如下：
-  - species: 物种名称（string）
-  - code: 物种代码（string）
-  - box: [x_min, y_min, x_max, y_max]（float数组，归一化坐标）
-  - confidence: 置信度（float, 0-1）
-- **detection_segments**（音频）：BirdNET输出的每个检测片段，结构如下：
-  - species: 物种名称（string）
-  - code: 物种代码（string）
-  - start: 检测片段起始时间（float, 秒）
-  - end: 检测片段结束时间（float, 秒）
-  - confidence: 置信度（float, 0-1）
-- **detection_frames**（视频）：每帧检测结果，结构如下：
-  - frame_idx: 帧编号（int）
-  - boxes: list<map>，每个map结构同detection_boxes
-- **created_at**：记录创建时间，ISO8601格式
+| Field Name           | Type           | Description                                              | Applicable Media |
+|----------------------|----------------|----------------------------------------------------------|------------------|
+| id                   | string (PK)    | Primary key, unique ID (UUID)                            | all              |
+| user_id              | string         | Uploader's user ID (from Cognito, or None if unavailable)| all              |
+| file_type            | string         | Media type: 'image', 'audio', or 'video'                 | all              |
+| s3_path              | string         | S3 path of the original file                             | all              |
+| thumbnail_path       | string         | S3 path of the thumbnail (image/video), None for audio   | image, video     |
+| detected_species     | list<string>   | Array of detected bird species names                     | all              |
+| detection_boxes      | list<map>      | Detection boxes (YOLO output for image/video)            | image, video     |
+| detection_segments   | list<map>      | Detection segments (BirdNET output for audio)            | audio            |
+| detection_frames     | list<map>      | Detection frames (YOLO output for video)                 | video            |
+| created_at           | string         | Upload/analysis timestamp (ISO8601 string)               | all              |
 
 ---
 
-## 样例
+## Field Details
 
-### 1. 图片记录
+- **id**: Unique primary key, UUID format
+- **user_id**: Uploader's user ID, from Cognito (or None if not available)
+- **file_type**: Media type, one of 'image', 'audio', or 'video'
+- **s3_path**: S3 path of the original media file
+- **thumbnail_path**: S3 path of the thumbnail; present for images/videos, None for audio
+- **detected_species**: All bird species detected in this media (array of species names)
+- **detection_boxes** (image/video): Object detection boxes, each with:
+  - species: Species name (string)
+  - code: Species code (string)
+  - box: [x_min, y_min, x_max, y_max] (float array, normalized coordinates)
+  - confidence: Confidence score (float, 0-1)
+- **detection_segments** (audio): BirdNET output segments, each with:
+  - species: Species name (string)
+  - code: Species code (string)
+  - start: Segment start time (float, seconds)
+  - end: Segment end time (float, seconds)
+  - confidence: Confidence score (float, 0-1)
+- **detection_frames** (video): Detection results per frame, each with:
+  - frame_idx: Frame index (int)
+  - boxes: list<map>, each map as in detection_boxes
+- **created_at**: Record creation time, ISO8601 format
+
+---
+
+## Sample Records
+
+### 1. Image Record
 ```json
 {
   "id": "img-uuid-001",
@@ -78,7 +78,7 @@
 }
 ```
 
-### 2. 音频记录
+### 2. Audio Record
 ```json
 {
   "id": "aud-uuid-002",
@@ -103,14 +103,14 @@
       "end": 12.0,
       "confidence": 0.6394
     }
-    // ... 其余片段 ...
+    // ... more segments ...
   ],
   "detection_frames": null,
   "created_at": "2024-06-01T12:34:56.789Z"
 }
 ```
 
-### 3. 视频记录
+### 3. Video Record
 ```json
 {
   "id": "vid-uuid-003",
@@ -144,7 +144,7 @@
       "frame_idx": 1,
       "boxes": []
     }
-    // ... 其余帧 ...
+    // ... more frames ...
   ],
   "created_at": "2024-06-01T13:00:00Z"
 }
@@ -152,8 +152,8 @@
 
 ---
 
-## 说明
-- 该表结构兼容Assignment推荐设计，支持图片、音频、视频三类媒体统一存储。
-- 各字段仅在适用类型下有值，其他类型可为null或不写入。
-- 检测片段、检测框、检测帧等结构便于后续前端可视化、查询和统计。
-- user_id建议与Cognito集成，便于用户溯源和权限控制。 
+## Notes
+- This schema is compatible with the recommended Assignment design and supports unified storage for images, audio, and video.
+- Fields not applicable to a media type should be set to null or omitted.
+- The structure of detection segments, boxes, and frames facilitates frontend visualization, querying, and analytics.
+- It is recommended to integrate user_id with Cognito for traceability and access control. 
