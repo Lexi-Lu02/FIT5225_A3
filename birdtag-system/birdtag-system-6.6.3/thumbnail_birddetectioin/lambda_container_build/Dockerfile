@@ -35,6 +35,10 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     # Clean up pip cache
     rm -rf /root/.cache/pip/*
 
+# ENV
+ENV MPLCONFIGDIR=/tmp/matplotlib
+ENV YOLO_CONFIG_DIR=/tmp/ultralytics
+
 # Create model directory
 RUN mkdir -p ${LAMBDA_TASK_ROOT}/model
 
