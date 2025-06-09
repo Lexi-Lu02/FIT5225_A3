@@ -10,10 +10,15 @@ ENV PYTHONUNBUFFERED=1 \
 # Install system dependencies
 RUN yum update -y && \
     yum install -y \
-    gcc \
-    gcc-c++ \
-    make \
-    git \
+      gcc \
+      gcc-c++ \
+      make \
+      git \
+      mesa-libGL \
+      mesa-libEGL \
+      libSM \
+      libXrender \
+      libXext \
     && yum clean all \
     && rm -rf /var/cache/yum
 
