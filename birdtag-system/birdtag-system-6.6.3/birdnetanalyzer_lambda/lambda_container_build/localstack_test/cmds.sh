@@ -1,8 +1,18 @@
 #!/bin/bash
 
+# 自动重启 localstack 容器，确保环境干净
+echo "Restarting localstack container..."
+docker rm -f localstack 2>/dev/null || true
+
 # 设置错误处理
 set -e
 trap 'echo "Error occurred. Cleaning up..."; cleanup' ERR
+
+# pip install awslocal jq
+
+# sudo usermod -aG docker $USER
+
+# newgrp docker
 
 # 清理函数
 cleanup() {
@@ -38,80 +48,78 @@ export AWS_SECRET_ACCESS_KEY=test
 export AWS_REGION=ap-southeast-2
 alias awslocal="aws --endpoint-url=http://localhost:4566"
 
+# 清理旧的 AWS 资源（S3 桶、Lambda 函数、DynamoDB 表）
+echo "Cleaning up old AWS resources..."
+awslocal s3 rb s3://your-test-bucket --force 2>/dev/null || true
+awslocal lambda delete-function --function-name birdnet-audio-analyzer 2>/dev/null || true
+awslocal dynamodb delete-table --table-name YourDDBTableName 2>/dev/null || true
+
 # 创建 S3 存储桶
 echo "Creating S3 bucket..."
 awslocal s3 mb s3://your-test-bucket
 
 # 上传测试音频文件
 echo "Uploading test audio file..."
-awslocal s3 cp ../test_audio.wav s3://your-test-bucket/upload/audio/test.wav
+awslocal s3 cp test_audio.wav s3://your-test-bucket/upload/audio/test.wav
+
+# 删除旧的 DynamoDB 表（如果存在）
+echo "Deleting old DynamoDB table if exists..."
+awslocal dynamodb delete-table --table-name YourDDBTableName 2>/dev/null || true
 
 # 创建 DynamoDB 表
 echo "Creating DynamoDB table..."
-awslocal dynamodb create-table \
+DDB_CREATE_OUTPUT=$(timeout 60s awslocal dynamodb create-table \
   --table-name YourDDBTableName \
-  --attribute-definitions \
-    AttributeName=id,AttributeType=S \
-    AttributeName=species,AttributeType=S \
-    AttributeName=created_at,AttributeType=S \
+  --attribute-definitions AttributeName=id,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
-  --global-secondary-indexes \
-    "[
-      {
-        \"IndexName\": \"species-index\",
-        \"KeySchema\": [{\"AttributeName\":\"species\",\"KeyType\":\"HASH\"}],
-        \"Projection\": {\"ProjectionType\":\"ALL\"},
-        \"ProvisionedThroughput\": {\"ReadCapacityUnits\":1,\"WriteCapacityUnits\":1}
-      },
-      {
-        \"IndexName\": \"created_at-index\",
-        \"KeySchema\": [{\"AttributeName\":\"created_at\",\"KeyType\":\"HASH\"}],
-        \"Projection\": {\"ProjectionType\":\"ALL\"},
-        \"ProvisionedThroughput\": {\"ReadCapacityUnits\":1,\"WriteCapacityUnits\":1}
-      }
-    ]" \
-  --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1
+  --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 2>&1)
+DDB_CREATE_EXIT=$?
+echo "$DDB_CREATE_OUTPUT"
+if [ $DDB_CREATE_EXIT -ne 0 ]; then
+  echo "[错误] DynamoDB 表创建失败，错误信息如下："
+  echo "$DDB_CREATE_OUTPUT"
+  exit 1
+fi
 
-# 创建 ECR 仓库
-echo "Creating ECR repository..."
-awslocal ecr create-repository --repository-name audio-analyzer
-
-# 标记并推送 Docker 镜像
-echo "Tagging and pushing Docker image..."
-docker tag birdnet-lambda:latest localhost:4566/audio-analyzer:latest
-docker push localhost:4566/audio-analyzer:latest
+echo "DynamoDB table created!"
 
 # 创建 Lambda 函数
 echo "Creating Lambda function..."
-awslocal lambda create-function \
+LAMBDA_CREATE_OUTPUT=$(awslocal lambda create-function \
   --function-name birdnet-audio-analyzer \
   --package-type Image \
-  --code ImageUri=localhost:4566/audio-analyzer:latest \
+  --code ImageUri=birdnet-lambda:latest \
   --role arn:aws:iam::000000000000:role/irrelevant \
   --timeout 300 \
   --memory-size 1024 \
-  --environment Variables="{DDB_TABLE=YourDDBTableName,LOCAL_TEST=true}"
+  --environment Variables="{DDB_TABLE=YourDDBTableName,LOCAL_TEST=true}" 2>&1)
+LAMBDA_CREATE_EXIT=$?
+echo "$LAMBDA_CREATE_OUTPUT"
+if [ $LAMBDA_CREATE_EXIT -ne 0 ]; then
+  echo "[错误] Lambda 函数创建失败，错误信息如下："
+  echo "$LAMBDA_CREATE_OUTPUT"
+  exit 1
+fi
 
-# 创建 S3 事件源映射
-echo "Creating S3 event source mapping..."
-awslocal lambda create-event-source-mapping \
-  --function-name birdnet-audio-analyzer \
-  --event-source-arn arn:aws:s3:::your-test-bucket \
-  --starting-position LATEST
+echo "Lambda function created!"
 
-# 测试 Lambda 函数
+# ===== 本地测试跳过 S3 事件源映射相关步骤 =====
+echo "[本地测试] 跳过 S3 事件源映射创建，仅手动触发 Lambda 测试主流程。"
+
+# 手动触发 Lambda 函数测试
 echo "Testing Lambda function..."
 awslocal lambda invoke \
   --function-name birdnet-audio-analyzer \
-  --payload file://event.json response.json
+  --payload file://event.json \
+  --cli-binary-format raw-in-base64-out \
+  response.json
 
-# 显示结果
 echo "Lambda response:"
 cat response.json
 
 # 检查 S3 结果
 echo "Checking S3 results..."
-awslocal s3 ls s3://your-test-bucket/species/
+awslocal s3 ls s3://your-test-bucket/upload/audio/
 
 # 检查 DynamoDB 结果
 echo "Checking DynamoDB results..."
