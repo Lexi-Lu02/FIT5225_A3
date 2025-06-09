@@ -6,42 +6,46 @@ from pathlib import Path
 
 def test_model_output(image_path):
     """
-    测试模型输出并打印详细信息
+    Test YOLO model inference and output detailed detection information.
+    Analyzes image processing, model predictions, and coordinate normalization.
+    
+    Args:
+        image_path (str): Path to the input image for testing
     """
-    # 加载模型 - 修改为当前目录
+    # Load YOLO model from current directory
     model = YOLO('./model.pt')
     
-    # 读取图片
+    # Read and validate input image
     img = cv2.imread(image_path)
     if img is None:
         print(f"Error: Could not read image {image_path}")
         return
         
-    # 获取图片尺寸
+    # Get image dimensions
     height, width = img.shape[:2]
     print(f"\nImage size: {width}x{height}")
     
-    # 运行推理
+    # Execute model inference
     results = model(img)[0]
     
-    # 打印原始结果
+    # Log raw detection results
     print("\nRaw YOLO Results:")
     print(f"Number of detections: {len(results.boxes)}")
     
-    # 打印每个检测的详细信息
+    # Process and display detailed detection information
     print("\nDetailed Detections:")
     for i, box in enumerate(results.boxes):
-        # 获取类别ID和置信度
+        # Extract class ID and confidence score
         cls_id = int(box.cls[0])
         conf = float(box.conf[0])
         
-        # 获取类别名称
+        # Get class name from model
         class_name = model.names[cls_id]
         
-        # 获取边界框坐标
+        # Extract bounding box coordinates
         x1, y1, x2, y2 = box.xyxy[0].tolist()
         
-        # 计算归一化坐标
+        # Calculate normalized coordinates
         norm_box = [
             float(x1 / width),
             float(y1 / height),
@@ -55,15 +59,15 @@ def test_model_output(image_path):
         print(f"  Raw box: [{x1:.1f}, {y1:.1f}, {x2:.1f}, {y2:.1f}]")
         print(f"  Normalized box: {[f'{x:.4f}' for x in norm_box]}")
     
-    # 打印模型类别信息
+    # Display model class mapping
     print("\nModel Classes:")
     for cls_id, cls_name in model.names.items():
         print(f"  {cls_id}: {cls_name}")
 
 if __name__ == "__main__":
-    # 测试几张不同的图片 - 修改为当前目录下的测试图片
+    # Test model with multiple sample images
     test_images = [
-        "./test_image.jpg",  # 使用当前目录的测试图片
+        "./test_image.jpg",  # Test image in current directory
         "../test_images/crows_1.jpg",
         "../test_images/kingfisher_1.jpg",
         "../test_images/sparrow_1.jpg"
