@@ -12,23 +12,26 @@ from birdnet_analyzer.analyze import analyze
 import traceback
 import decimal
 
-# Initialize logger
+# Initialize AWS Lambda Powertools logger for structured logging
 logger = Logger()
 
-# Initialize AWS clients
+# Initialize AWS service clients for S3 and DynamoDB operations
 s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['DDB_TABLE'])
 
-# Set environment variables for BirdNET-Analyzer
-os.environ["NUMBA_CACHE_DIR"] = "/tmp/numba_cache"
-import birdnet_analyzer.config as cfg
-cfg.ERROR_LOG_FILE = "/tmp/error_log.txt"
-
 def move_file_to_species_folder(bucket: str, source_key: str, species_name: str) -> str:
     """
-    Move file to species folder in S3
-    Returns the new key of the file
+    Relocates processed audio file to a species-specific directory in S3 bucket.
+    Implements a test mode that simulates S3 operations for local development.
+    
+    Args:
+        bucket (str): S3 bucket name
+        source_key (str): Original S3 object key
+        species_name (str): Detected species name for folder organization
+        
+    Returns:
+        str: New S3 object key in species-specific directory
     """
     is_local_test = os.environ.get("LOCAL_TEST") == "1" or bucket == "test-bucket"
     filename = os.path.basename(source_key)
@@ -36,7 +39,7 @@ def move_file_to_species_folder(bucket: str, source_key: str, species_name: str)
     if is_local_test:
         logger.info(f"Local test: skip S3 copy_object and delete_object, return {new_key}")
         return new_key
-    # 云端环境才做S3操作
+    # Execute S3 operations only in production environment
     s3.copy_object(
         Bucket=bucket,
         CopySource={'Bucket': bucket, 'Key': source_key},
@@ -82,9 +85,7 @@ def save_to_dynamodb(
         's3_path': new_key,
         'thumbnail_path': None,
         'detected_species': detected_species,
-        'detection_boxes': None,
         'detection_segments': detection_segments,
-        'detection_frames': None,
         'created_at': created_at
     }
     item = float_to_decimal(item)
@@ -98,10 +99,19 @@ def save_to_dynamodb(
 @logger.inject_lambda_context
 def lambda_handler(event: dict, context: LambdaContext) -> dict:
     """
-    Lambda function handler for BirdNET audio analysis
+    AWS Lambda handler for BirdNET audio analysis pipeline.
+    Processes audio files from S3, performs bird species detection,
+    and stores results in DynamoDB with species-specific S3 organization.
+    
+    Args:
+        event (dict): S3 event trigger containing file metadata
+        context (LambdaContext): AWS Lambda context object
+        
+    Returns:
+        dict: Response containing analysis results and file metadata
     """
     try:
-        # 兼容本地测试和Lambda环境的S3事件解析
+        # Parse S3 event payload with fallback for different event formats
         try:
             s3_event = S3Event(event)
             records = list(s3_event.records)
@@ -115,11 +125,11 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         
         logger.info(f"Processing audio file: {key} from bucket: {bucket}")
         
-        # Validate file extension
+        # Validate audio file format against supported extensions
         if not key.lower().endswith(('.wav', '.mp3', '.flac')):
             raise ValueError(f"Unsupported file format: {key}")
         
-        # 本地测试时跳过S3下载，直接用本地文件
+        # Implement local development mode with direct file access
         local_file = f"/tmp/{os.path.basename(key)}"
         is_local_test = os.environ.get("LOCAL_TEST") == "1" or bucket == "test-bucket"
         if is_local_test:
@@ -130,7 +140,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             s3.download_file(bucket, key, local_file)
             logger.info(f"Downloaded file to: {local_file}")
         
-        # 直接调用BirdNET-Analyzer的analyze进行音频分析
+        # Execute BirdNET analysis pipeline with default parameters
         output_dir = "/tmp/birdnet_output"
         os.makedirs(output_dir, exist_ok=True)
         analyze(
@@ -145,7 +155,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             lon=None,
             week=None
         )
-        # 查找输出结果文件（.BirdNET.selection.table.txt）
+        # Parse BirdNET analysis results from tab-separated output file
         base_name = os.path.splitext(os.path.basename(local_file))[0]
         result_file = os.path.join(output_dir, f"{base_name}.BirdNET.selection.table.txt")
         predictions = []
@@ -164,7 +174,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         predictions = list(predictions)
         logger.info(f"Found {len(predictions)} bird detections")
         
-        # 构建 detection_segments 和 detected_species
+        # Process detection results into structured data format
         detection_segments = []
         detected_species_set = set()
         for pred in predictions:
@@ -181,7 +191,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
                 logger.error(f"Error parsing prediction row: {pred}, error: {e}")
         detected_species = list(detected_species_set)
         
-        # 物种统计
+        # Aggregate species detection statistics and confidence metrics
         species_summary = {}
         for seg in detection_segments:
             species = seg['species']
@@ -195,7 +205,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
                 species_summary[species]['max_confidence'],
                 seg['confidence']
             )
-        # 取最高置信度物种
+        # Determine primary species based on highest confidence detection
         highest_confidence_species = None
         if species_summary:
             highest_confidence_species = max(
@@ -205,11 +215,11 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
         else:
             highest_confidence_species = 'unknown'
         
-        # Move file to species folder
+        # Organize file in species-specific S3 directory structure
         new_key = move_file_to_species_folder(bucket, key, highest_confidence_species)
         logger.info(f"Moved file to species folder: {new_key}")
         
-        # Save to DynamoDB
+        # Persist analysis results to DynamoDB with metadata
         created_at = datetime.utcnow().isoformat()
         user_id = event.get('user_id') or None
         media_id = save_to_dynamodb(
@@ -223,7 +233,7 @@ def lambda_handler(event: dict, context: LambdaContext) -> dict:
             user_id=user_id
         )
         
-        # Clean up temporary file
+        # Cleanup temporary processing files
         os.remove(local_file)
         logger.info("Cleaned up temporary file")
         
