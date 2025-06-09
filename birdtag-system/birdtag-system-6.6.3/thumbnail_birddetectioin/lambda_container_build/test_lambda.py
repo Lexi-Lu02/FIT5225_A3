@@ -10,26 +10,26 @@ import logging
 import traceback
 from decimal import Decimal
 
-# 配置日志
+# Configure logging for test execution
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 自定义JSON编码器处理Decimal类型
+# Custom JSON encoder to handle Decimal type serialization
 class DecimalEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Decimal):
             return float(obj)
         return super(DecimalEncoder, self).default(obj)
 
-# 设置环境变量（在导入lambda_function之前）
+# Set environment variables (before importing lambda_function)
 os.environ['LOCAL_TEST'] = '1'
 os.environ['DDB_TABLE'] = 'BirdTagMedia'
-os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'  # 设置默认区域
+os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'  # Set default AWS region
 
-# 现在导入lambda_function
+# Import lambda_function after environment setup
 from lambda_function import lambda_handler, float_to_decimal
 
-# 测试用的S3事件
+# Helper function to create S3 event payload
 def create_s3_event(bucket, key):
     return {
         'Records': [{
@@ -42,7 +42,15 @@ def create_s3_event(bucket, key):
 
 @mock_aws
 def test_lambda_function():
-    """测试完整的lambda_function功能"""
+    """
+    Comprehensive test suite for lambda_function.
+    Tests the complete pipeline including:
+    - S3 event handling
+    - Image processing
+    - Model inference
+    - DynamoDB persistence
+    - File organization
+    """
     try:
         logger.info("Starting lambda function test...")
         logger.info("Environment variables:")
@@ -50,21 +58,21 @@ def test_lambda_function():
         logger.info(f"DDB_TABLE: {os.environ.get('DDB_TABLE')}")
         logger.info(f"AWS_DEFAULT_REGION: {os.environ.get('AWS_DEFAULT_REGION')}")
         
-        # 创建mock S3 bucket
+        # Initialize mock S3 bucket
         s3 = boto3.client('s3', region_name='us-east-1')
         bucket_name = 'test-bucket'
         try:
-            # us-east-1 不需要指定 LocationConstraint
+            # No LocationConstraint needed for us-east-1
             s3.create_bucket(Bucket=bucket_name)
             logger.info(f"Created mock S3 bucket: {bucket_name}")
         except Exception as e:
-            # 如果bucket已存在，继续测试
+            # Continue if bucket already exists
             if 'BucketAlreadyOwnedByYou' in str(e):
                 logger.info(f"Bucket {bucket_name} already exists, continuing...")
             else:
                 raise
         
-        # 创建mock DynamoDB表
+        # Initialize mock DynamoDB table
         dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
         table = dynamodb.create_table(
             TableName='BirdTagMedia',
@@ -74,7 +82,7 @@ def test_lambda_function():
         )
         logger.info("Created mock DynamoDB table")
         
-        # 读取实际的测试图片
+        # Load test image for processing
         test_image_path = './test_image.jpg'
         if not os.path.exists(test_image_path):
             raise FileNotFoundError(f"Test image not found: {test_image_path}")
@@ -83,7 +91,7 @@ def test_lambda_function():
             test_image_content = f.read()
         logger.info(f"Loaded test image: {test_image_path} ({len(test_image_content)} bytes)")
         
-        # 上传测试图片到S3
+        # Upload test image to mock S3
         test_key = 'upload/image/test_image.jpg'
         s3.put_object(
             Bucket=bucket_name,
@@ -93,32 +101,32 @@ def test_lambda_function():
         )
         logger.info(f"Uploaded test image to S3: {test_key}")
         
-        # 创建S3事件
+        # Create S3 event trigger
         event = create_s3_event(bucket_name, test_key)
         logger.info("Created S3 event")
         
-        # 调用lambda函数
+        # Execute lambda function
         logger.info("Calling lambda_handler...")
         response = lambda_handler(event, {})
         
-        # 验证响应
+        # Validate response status
         assert response['statusCode'] == 200, f"Expected status code 200, got {response['statusCode']}"
         logger.info(f"Lambda response: {json.dumps(response, indent=2)}")
         
-        # 解析响应体
+        # Parse response payload
         response_body = json.loads(response['body'])
         media_id = response_body['record_id']
         
-        # 验证DynamoDB记录
+        # Verify DynamoDB record creation
         table = dynamodb.Table('BirdTagMedia')
         items = table.scan()['Items']
         assert len(items) == 1, f"Expected 1 item in DynamoDB, got {len(items)}"
         
         item = items[0]
-        # 使用自定义编码器序列化DynamoDB记录
+        # Serialize DynamoDB record using custom encoder
         logger.info(f"DynamoDB record: {json.dumps(item, indent=2, cls=DecimalEncoder)}")
         
-        # 验证所有必需字段
+        # Validate required fields in DynamoDB record
         required_fields = ['id', 'file_type', 'detected_species', 'detection_boxes', 
                          'thumbnail_path', 's3_path', 'created_at']
         for field in required_fields:
@@ -126,7 +134,7 @@ def test_lambda_function():
         assert item['file_type'] == 'image', f"Expected file_type 'image', got {item['file_type']}"
         assert item['id'] == media_id, f"Expected media_id {media_id}, got {item['id']}"
         
-        # 打印检测结果
+        # Log detection results
         logger.info("\nDetection Results:")
         logger.info(f"Detected species: {item['detected_species']}")
         logger.info(f"Number of detections: {len(item['detection_boxes'])}")
@@ -136,14 +144,14 @@ def test_lambda_function():
             logger.info(f"  Confidence: {float(box['confidence']):.4f}")
             logger.info(f"  Box: {[float(x) for x in box['box']]}")
         
-        # 验证S3文件移动
+        # Verify S3 file relocation
         try:
             s3.head_object(Bucket=bucket_name, Key=test_key)
             raise AssertionError("Original file should be moved")
         except:
             logger.info("✓ Original file moved successfully")
         
-        # 验证缩略图生成
+        # Verify thumbnail generation
         thumbnail_key = item['thumbnail_path']
         try:
             s3.head_object(Bucket=bucket_name, Key=thumbnail_key)
@@ -151,7 +159,7 @@ def test_lambda_function():
         except:
             raise AssertionError("Thumbnail should exist")
         
-        # 验证文件移动到species目录
+        # Verify species directory organization
         species_key = item['s3_path']
         try:
             s3.head_object(Bucket=bucket_name, Key=species_key)
